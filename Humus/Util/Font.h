@@ -43,7 +43,7 @@ public:
 
 private:
 	int m_Extents[256][2];
-
+	void SetScale(Context context, float scale[4]);
 	VertexSetup m_VertexSetup;
 	Buffer m_VertexBuffer;
 	Buffer m_IndexBuffer;
@@ -57,4 +57,5 @@ private:
 	SamplerTable m_SamplerTable;
 
 	int m_Width, m_Height;
+	Buffer m_ScaleCB;
 };

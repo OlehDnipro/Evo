@@ -547,13 +547,13 @@ Device CreateDevice(DeviceParams& params)
 	instance_create_info.pApplicationInfo = &app_info;
 	instance_create_info.enabledExtensionCount = elementsof(instance_extensions);
 	instance_create_info.ppEnabledExtensionNames = instance_extensions;
-	/*
+	
 #ifdef DEBUG
 	// Enable validation layer
 	static const char* validation_layers[] = { "VK_LAYER_LUNARG_standard_validation" };
 	instance_create_info.enabledLayerCount = 1;
 	instance_create_info.ppEnabledLayerNames = validation_layers;
-#endif*/
+#endif
 
 	VkInstance instance = VK_NULL_HANDLE;
 	VkResult res = vkCreateInstance(&instance_create_info, VK_NULL_HANDLE, &instance);
@@ -1296,6 +1296,19 @@ ResourceTable CreateResourceTable(Device device, RootSignature root, uint32 slot
 				Buffer buffer = (Buffer) resources[i].m_Resource;
 
 				descriptor_write.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+				descriptor_write.pImageInfo = VK_NULL_HANDLE;
+				descriptor_write.pBufferInfo = &buffer_info;
+
+				buffer_info.buffer = buffer->m_Buffer;
+				break;
+			}
+			case CBV:
+			{
+				ASSERT(resources[i].m_Type == RESTYPE_BUFFER);
+
+				Buffer buffer = (Buffer)resources[i].m_Resource;
+
+				descriptor_write.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
 				descriptor_write.pImageInfo = VK_NULL_HANDLE;
 				descriptor_write.pBufferInfo = &buffer_info;
 

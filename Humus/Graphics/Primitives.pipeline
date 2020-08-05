@@ -34,9 +34,12 @@ struct SConstants
 };
 
 ROOT_BEGIN
-	CONSTANT	float4 Color;
-	CBUFFER		SConstants Constants;
 
+	RT_BEGIN CB
+		CBUFFER		float4 Color;
+		CBUFFER		SConstants Constants;
+	RT_END
+	
 	RT_BEGIN Resources
 		TEXTURE		Texture2D Texture;
 	RT_END

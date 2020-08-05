@@ -128,7 +128,7 @@ bool CheckBox::Init(Device device, RootSignature root)
 	SetTextureData(GetMainContext(device), m_Texture, 0, 0, (void*) check_pic, sizeof(check_pic), 8 * sizeof(uint32));
 
 	SResourceDesc resources[] = { m_Texture };
-	m_ResourceTable = CreateResourceTable(device, root, 2, resources);
+	m_ResourceTable = CreateResourceTable(device, root, 1, resources);
 
 	return (m_ResourceTable != nullptr);
 }

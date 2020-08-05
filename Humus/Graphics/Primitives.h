@@ -34,7 +34,7 @@ public:
 	void DestroyResources(Device device);
 
 	void SetMatrix(Context context, const float4x4 &matrix);
-
+	void SetColor(Context context, const float* color);
 	RootSignature GetRootSignature() const { return m_RootSig; }
 
 	enum BLEND_MODE { OPAQUE, TRANSLUCENT };
@@ -63,5 +63,8 @@ private:
 	enum PRIM_TYPE { LINES, TRIANGLES, TRIANGLE_STRIP };
 	void DrawVertices(Context context, DrawSetup& setup, const void* vertices, const uint vertex_count, const uint vertex_stride, PRIM_TYPE primitive_type, BLEND_MODE blend_mode, const float* color, const ResourceTable resources = nullptr, const SamplerTable samplers = nullptr);
 
-	Buffer m_VertexCB;
+	Buffer m_MatrixCB;
+	Buffer m_ColorCB;
+	ResourceTable m_ConstantTable;
+
 };

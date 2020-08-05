@@ -99,7 +99,7 @@ bool DemoApp::Create()
 	m_Font.SetWindowSize(m_Device, m_DeviceParams.m_Width, m_DeviceParams.m_Height);
 
 	const SSamplerDesc sampler = { FILTER_LINEAR, 1, AM_CLAMP, AM_CLAMP, AM_CLAMP };
-	if ((m_LinearClamp = CreateSamplerTable(m_Device, m_Primitives.GetRootSignature(), 3, &sampler, 1)) == nullptr) return false;
+	if ((m_LinearClamp = CreateSamplerTable(m_Device, m_Primitives.GetRootSignature(), 2, &sampler, 1)) == nullptr) return false;
 
 	CheckBox::Init(m_Device, m_Primitives.GetRootSignature());
 
@@ -353,7 +353,7 @@ void DemoApp::DrawGUI(Context context, uint buffer_index, const SProfileData* pr
 
 	BeginRenderPass(context, "GUI", GetBackBufferRenderPass(m_Device), GetBackBufferSetup(m_Device, buffer_index));
 	{
-		/*if (m_Widgets.GoToLast())
+		if (m_Widgets.GoToLast())
 		{
 			do
 			{
@@ -369,9 +369,9 @@ void DemoApp::DrawGUI(Context context, uint buffer_index, const SProfileData* pr
 					widget->Draw(context, m_Primitives, m_Font, m_LinearClamp, m_BlendSrcAlpha);
 				}
 			} while (m_Widgets.GoToPrev());
-		}*/
+		}
 
-		/*if (m_ShowFPS || (m_ShowProfile && profile_data_count))
+		if (m_ShowFPS || (m_ShowProfile && profile_data_count))
 		{
 			ScopeMarker(context, "FPS");
 			if (m_ShowFPS)
@@ -424,7 +424,7 @@ void DemoApp::DrawGUI(Context context, uint buffer_index, const SProfileData* pr
 				ASSERT(stack == 0);
 			}
 		}
-        */
+        
 #ifdef DEBUG
 		if (m_ShowPosition)
 		{

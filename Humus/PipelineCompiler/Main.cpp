@@ -1,7 +1,13 @@
 #include "../Util/Tokenizer.h"
 #include "../Graphics/Vulkan/VulkanRootSignature.h"
 #include <vector>
+#include <map>
 #include <string>
+// included for inline template functions only
+#define VK_NO_PROTOTYPES 1
+#include <vulkan/vulkan.h> // used for enums and declarations only; needed by PipelineLayouts.h
+#define SPIRV_CROSS_EXCEPTIONS_TO_ASSERTIONS
+#include "spirv_cross.hpp"
 
 #include <d3d12.h>
 #include <d3dcompiler.h>
@@ -164,9 +170,9 @@ static bool IsType(const std::string* types, int count, const char* name)
 
 static ItemType GetItemType(const char* type)
 {
-	if (strcmp(type, "CONSTANT") == 0)
-		return CONSTANT;
-	else if (strcmp(type, "TEXTURE") == 0)
+	/*if (strcmp(type, "CONSTANT") == 0)
+		return CONSTANT;*/
+	if (strcmp(type, "TEXTURE") == 0)
 		return TEXTURE;
 	else if (strcmp(type, "STRUCTUREDBUFFER") == 0)
 		return STRUCTUREDBUFFER;
@@ -314,7 +320,7 @@ static bool WriteFile(const char* file_name, const void* data, size_t size)
 	return result;
 }
 
-static char* WriteShaderHeader(const char* header, size_t header_size, const char* footer, const std::vector<SItem>& items, ShaderLanguage shader_language)
+static char* WriteShaderHeader(const char* header, size_t header_size, const char* footer, const std::vector<SItem>& items, GraphicsAPI api,  ShaderLanguage shader_language, std::map<std::string, std::pair<uint32_t, uint32_t>>& bindings)
 {
 	char* buffer = new char[65536]; // TEMP
 
@@ -343,11 +349,11 @@ static char* WriteShaderHeader(const char* header, size_t header_size, const cha
 				str += sprintf(str, "%s %s : register(u%d);\n", it.m_Type.c_str(), it.m_Name.c_str(), uav_reg);
 				uav_reg++;
 				break;
-			case CONSTANT:
+			/*case CONSTANT:
 			case CBV:
 				str += sprintf(str, "cbuffer cb%d : register(b%d) { %s %s; }\n", cbv_reg, cbv_reg, it.m_Type.c_str(), it.m_Name.c_str());
 				cbv_reg++;
-				break;
+				break;*/
 			case RESOURCE_TABLE:
 				for (const SItem& sit : it.m_SubItems)
 				{
@@ -380,7 +386,7 @@ static char* WriteShaderHeader(const char* header, size_t header_size, const cha
 						}
 						break;
 					case CBV:
-						str += sprintf(str, "cbuffer cb%d : register(b%d) { %s %s; }\n", cbv_reg, cbv_reg, sit.m_Type.c_str(), sit.m_Name.c_str());
+						str += sprintf(str, "cbuffer cb%s : register(b%d) { %s %s; }\n", sit.m_Name.c_str(), cbv_reg, sit.m_Type.c_str(), sit.m_Name.c_str());
 						cbv_reg++;
 						break;
 					}
@@ -396,9 +402,9 @@ static char* WriteShaderHeader(const char* header, size_t header_size, const cha
 			}
 		}
 	}
-	else
+	if (shader_language == GLSL || (api == Vulkan && shader_language == HLSL))
 	{
-		int push_buffer_offset = 0;
+		/*int push_buffer_offset = 0;
 		for (const SItem& it : items)
 		{
 			if (it.m_ItemType == CONSTANT)
@@ -413,7 +419,7 @@ static char* WriteShaderHeader(const char* header, size_t header_size, const cha
 
 		if (push_buffer_offset)
 			str += sprintf(str, "};\n");
-
+			*/
 		int descriptor_set = 0;
 		for (int i = 0; i < items.size(); i++)
 		{
@@ -425,13 +431,13 @@ static char* WriteShaderHeader(const char* header, size_t header_size, const cha
 				break;
 			case UAV:
 				break;*/
-			case CONSTANT:
+			/*case CONSTANT:
 				// Push constants already handled above
 				break;
 			case CBV:
 				str += sprintf(str, "layout(set = %d, binding = 0) uniform cb%d { %s %s; };\n", descriptor_set, i, it.m_Type.c_str(), it.m_Name.c_str());
 				++descriptor_set;
-				break;
+				break;*/
 			case RESOURCE_TABLE:
 				for (int j = 0; j < it.m_SubItems.size(); j++)
 				{
@@ -441,38 +447,67 @@ static char* WriteShaderHeader(const char* header, size_t header_size, const cha
 					{
 					case TEXTURE:
 					case RWTEXTURE:
-						if (sit.m_Count)
+						if (shader_language == GLSL)
 						{
-							str += sprintf(str, "layout(set = %d, binding = %d) uniform %s %s[%d];\n", descriptor_set, j, sit.m_Type.c_str(), sit.m_Name.c_str(), sit.m_Count);
+							if (sit.m_Count)
+							{
+								str += sprintf(str, "layout(set = %d, binding = %d) uniform %s %s[%d];\n", descriptor_set, j, sit.m_Type.c_str(), sit.m_Name.c_str(), sit.m_Count);
+							}
+							else
+							{
+								str += sprintf(str, "layout(set = %d, binding = %d) uniform %s %s;\n", descriptor_set, j, sit.m_Type.c_str(), sit.m_Name.c_str());
+							}
 						}
 						else
 						{
-							str += sprintf(str, "layout(set = %d, binding = %d) uniform %s %s;\n", descriptor_set, j, sit.m_Type.c_str(), sit.m_Name.c_str());
+							bindings[sit.m_Name] = std::pair<uint32_t, uint32_t>(descriptor_set, j);
 						}
 						break;
 					case STRUCTUREDBUFFER:
-						if (sit.m_Count)
+						if (shader_language == GLSL)
 						{
-							str += sprintf(str, "layout(set = %d, binding = %d, std430) readonly buffer sb_%d_%d { %s %s[][%d]; };\n", descriptor_set, j, descriptor_set, j, sit.m_Type.c_str(), sit.m_Name.c_str(), sit.m_Count);
+							if (sit.m_Count)
+							{
+								str += sprintf(str, "layout(set = %d, binding = %d, std430) readonly buffer sb_%d_%d { %s %s[][%d]; };\n", descriptor_set, j, descriptor_set, j, sit.m_Type.c_str(), sit.m_Name.c_str(), sit.m_Count);
+							}
+							else
+							{
+								str += sprintf(str, "layout(set = %d, binding = %d, std430) readonly buffer sb_%d_%d { %s %s[]; };\n", descriptor_set, j, descriptor_set, j, sit.m_Type.c_str(), sit.m_Name.c_str());
+							}
 						}
 						else
 						{
-							str += sprintf(str, "layout(set = %d, binding = %d, std430) readonly buffer sb_%d_%d { %s %s[]; };\n", descriptor_set, j, descriptor_set, j, sit.m_Type.c_str(), sit.m_Name.c_str());
+							bindings[sit.m_Name] = std::pair<uint32_t, uint32_t>(descriptor_set, j);
 						}
 						break;
 					case RWSTRUCTUREDBUFFER:
-						if (sit.m_Count)
+						if (shader_language == GLSL)
 						{
-							str += sprintf(str, "layout(set = %d, binding = %d, std430) buffer sb_%d_%d { %s %s[][%d]; };\n", descriptor_set, j, descriptor_set, j, sit.m_Type.c_str(), sit.m_Name.c_str(), sit.m_Count);
+							if (sit.m_Count)
+							{
+								str += sprintf(str, "layout(set = %d, binding = %d, std430) buffer sb_%d_%d { %s %s[][%d]; };\n", descriptor_set, j, descriptor_set, j, sit.m_Type.c_str(), sit.m_Name.c_str(), sit.m_Count);
+							}
+							else
+							{
+								str += sprintf(str, "layout(set = %d, binding = %d, std430) buffer sb_%d_%d { %s %s[]; };\n", descriptor_set, j, descriptor_set, j, sit.m_Type.c_str(), sit.m_Name.c_str());
+							}
 						}
 						else
 						{
-							str += sprintf(str, "layout(set = %d, binding = %d, std430) buffer sb_%d_%d { %s %s[]; };\n", descriptor_set, j, descriptor_set, j, sit.m_Type.c_str(), sit.m_Name.c_str());
+							bindings[sit.m_Name] = std::pair<uint32_t, uint32_t>(descriptor_set, j);
 						}
 						break;
-					/*
+					
 					case CBV:
-						break;*/
+						if (shader_language == GLSL)
+						{
+							str += sprintf(str, "layout(set = %d, binding = %d) uniform cb%s { %s %s; };\n", descriptor_set, j, it.m_Name.c_str(), it.m_Type.c_str(), it.m_Name.c_str());
+						}
+						else
+						{
+							bindings[std::string("cb")+sit.m_Name] = std::pair<uint32_t, uint32_t>(descriptor_set, j);
+						}
+						break;
 					}
 				}
 				++descriptor_set;
@@ -481,7 +516,14 @@ static char* WriteShaderHeader(const char* header, size_t header_size, const cha
 				for (int j = 0; j < it.m_SubItems.size(); j++)
 				{
 					const SItem& sit = it.m_SubItems[j];
-					str += sprintf(str, "layout(set = %d, binding = %d) uniform %s %s;\n", descriptor_set, j, sit.m_Type.c_str(), sit.m_Name.c_str());
+					if (shader_language == GLSL)
+					{
+						str += sprintf(str, "layout(set = %d, binding = %d) uniform %s %s;\n", descriptor_set, j, sit.m_Type.c_str(), sit.m_Name.c_str());
+					}
+					else
+					{
+						bindings[sit.m_Name] = std::pair<uint32_t, uint32_t>(descriptor_set, j);
+					}
 				}
 				++descriptor_set;
 				break;
@@ -534,7 +576,7 @@ static Error WriteCppHeader(FILE* file, const char* header, size_t header_size, 
 					}
 				}
 			}
-			fprintf(file, "\n\tCount\n};\n");
+			fprintf(file, "\n};\n");
 		}
 	}
 
@@ -565,12 +607,12 @@ static Error WriteCppHeader(FILE* file, const char* header, size_t header_size, 
 
 			switch (it.m_ItemType)
 			{
-			case CONSTANT:
+			/*case CONSTANT:
 				root_param[i].ParameterType = D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
 				root_param[i].Constants.ShaderRegister = cbv_reg;
 				root_param[i].Constants.Num32BitValues = GetNumDWORDs(it.m_Type.c_str());
 				cbv_reg++;
-				break;
+				break;*/
 			case TEXTURE:
 			case STRUCTUREDBUFFER:
 				root_param[i].ParameterType = D3D12_ROOT_PARAMETER_TYPE_SRV;
@@ -704,9 +746,9 @@ static Error WriteCppHeader(FILE* file, const char* header, size_t header_size, 
 			root->m_Slots[i].m_Type = it.m_ItemType;
 			switch (it.m_ItemType)
 			{
-			case CONSTANT:
+			/*case CONSTANT:
 				root->m_Slots[i].m_Size = GetNumDWORDs(it.m_Type.c_str());
-				break;
+				break;*/
 			case RESOURCE_TABLE:
 			case SAMPLER_TABLE:
 				root->m_Slots[i].m_Size = (uint32) it.m_SubItems.size();
@@ -758,7 +800,7 @@ static void ParseTypeAndName(SItem& item, Tokenizer& tokenizer)
 	item.m_Name = name;
 }
 
-Error ParseRootSig(FILE* file, ShaderLanguage shader_language, GraphicsAPI api, char*& hlsl_header, char* root_sig)
+Error ParseRootSig(FILE* file, ShaderLanguage shader_language, GraphicsAPI api, char*& hlsl_header, char* root_sig, std::map<std::string, std::pair<uint32_t, uint32_t>>& bindings)
 {
 	char* begin = strstr(root_sig, "ROOT_BEGIN");
 	if (begin == nullptr)
@@ -936,7 +978,7 @@ Error ParseRootSig(FILE* file, ShaderLanguage shader_language, GraphicsAPI api, 
 	//if (!WriteHLSLHeader(hlsl_filename, header, header_size, footer, items))
 	//	return false;
 
-	hlsl_header = WriteShaderHeader(root_sig, header_size, footer, items, shader_language);
+	hlsl_header = WriteShaderHeader(root_sig, header_size, footer, items, api, shader_language, bindings);
 
 	Error error = WriteCppHeader(file, root_sig, header_size, items, api);
 
@@ -1011,8 +1053,85 @@ struct SShaderSource
 	std::vector<char*> m_Names;
 	uint  m_Line;
 };
+bool PatcResource(spirv_cross::Compiler const* comp,spirv_cross::Resource const& resource, uint32_t* output, size_t size, std::map<std::string, std::pair<uint32_t, uint32_t>> const& bindings)
+{
+	auto binding = bindings.find(comp->get_name(resource.id).c_str());
+	if (binding == bindings.end())
+	{
+		return false;
+	}
+	uint32_t binding_offset = 0;
+	bool bindingDecorationFound = comp->get_binary_offset_for_decoration(resource.id, spv::DecorationBinding, binding_offset);
+	if (!bindingDecorationFound)
+		return false;
+	else
+	{
+		output[binding_offset] = binding->second.second;
+	}
+		
+	uint32_t descSet_offset;
+	comp->get_binary_offset_for_decoration(resource.id, spv::DecorationDescriptorSet, descSet_offset);
+	output[descSet_offset] = binding->second.first;// now samplers - table 0, others - table 1
+	return true;
+}
 
-bool CompileShader(FILE* file, const char* external_compiler, const char* options, const SShaderSource& source, ShaderLanguage shader_language, GraphicsAPI api, const bool debug, const char* header, const char* root_header, const char* filename, const char *profile)
+bool Patch( uint32_t* output, size_t size, std::map<std::string, std::pair<uint32_t, uint32_t>> const& bindings)
+{
+	spirv_cross::Compiler comp_src((uint32_t*)output, size / sizeof(uint32_t));
+	spirv_cross::Compiler* comp = &comp_src;
+
+	auto active = comp->get_active_interface_variables();
+	spirv_cross::ShaderResources resources = comp->get_shader_resources(active);
+	for (int i = 0; i < resources.separate_images.size(); ++i)
+	{
+		spirv_cross::Resource resource = resources.separate_images[i];
+		if (!PatcResource(comp,resource, output, size, bindings))
+		{
+			return false;
+		}
+	}
+
+
+	for (int i = 0; i < resources.storage_images.size(); ++i)
+	{
+		spirv_cross::Resource resource = resources.storage_images[i];
+		if (!PatcResource(comp,resource, output, size, bindings))
+		{
+			return false;
+		}
+
+	}
+
+	for (int i = 0; i < resources.separate_samplers.size(); ++i)
+	{
+		spirv_cross::Resource resource = resources.separate_samplers[i];
+		if (!PatcResource(comp,resource, output, size, bindings))
+		{
+			return false;
+		}
+	}
+
+
+	for (int i = 0; i < resources.uniform_buffers.size(); ++i)
+	{
+		spirv_cross::Resource resource = resources.uniform_buffers[i];
+		if (!PatcResource(comp,resource, output, size, bindings))
+		{
+			return false;
+		}
+
+	}
+
+	for (int i = 0; i < resources.storage_buffers.size(); ++i)
+	{
+		spirv_cross::Resource resource = resources.storage_buffers[i];
+		if (!PatcResource(comp,resource, output, size, bindings))
+		{
+			return false;
+		}
+	}
+}
+bool CompileShader(FILE* file, const char* external_compiler, const char* options, const SShaderSource& source, ShaderLanguage shader_language, GraphicsAPI api, const bool debug, const char* header, const char* root_header, const char* filename, const char *profile, std::map<std::string, std::pair<uint32_t, uint32_t>> const& bindings)
 {
 	const int num_shaders = (int) source.m_Names.size();
 	for (int sh = 0; sh < num_shaders; sh++)
@@ -1076,6 +1195,11 @@ bool CompileShader(FILE* file, const char* external_compiler, const char* option
 			bool result = ReadFile(temp_dst, data, size);
 			if (result)
 			{
+				if (shader_language == HLSL && api == Vulkan)
+				{
+					Patch((uint32_t*)data, size, bindings);
+				}
+
 				WriteD3DBlob(file, data, size, name);
 				delete [] data;
 			}
@@ -1367,10 +1491,11 @@ int main(int argc, char **argv)
 
 	char* root_header = nullptr;
 
+	std::map<std::string, std::pair<uint32_t, uint32_t>> m_bindings;
 	Error res = SUCCESS;
 	if (root_sig)
 	{
-		Error error = ParseRootSig(file, shader_language, api, root_header, root_sig);
+		Error error = ParseRootSig(file, shader_language, api, root_header, root_sig, m_bindings);
 		if (error)
 		{
 			res = error;
@@ -1381,7 +1506,7 @@ int main(int argc, char **argv)
 	const int ts_count = (int) task_shaders.size();
 	for (int i = 0; i < ts_count; i++)
 	{
-		if (!CompileShader(file, compiler, options, task_shaders[i], shader_language, api, debug, header, root_header, in_filename, ts_profile))
+		if (!CompileShader(file, compiler, options, task_shaders[i], shader_language, api, debug, header, root_header, in_filename, ts_profile, m_bindings))
 		{
 			res = COMPILE_ERROR;
 			goto quit;
@@ -1391,7 +1516,7 @@ int main(int argc, char **argv)
 	const int ms_count = (int) mesh_shaders.size();
 	for (int i = 0; i < ms_count; i++)
 	{
-		if (!CompileShader(file, compiler, options, mesh_shaders[i], shader_language, api, debug, header, root_header, in_filename, ms_profile))
+		if (!CompileShader(file, compiler, options, mesh_shaders[i], shader_language, api, debug, header, root_header, in_filename, ms_profile, m_bindings))
 		{
 			res = COMPILE_ERROR;
 			goto quit;
@@ -1401,7 +1526,7 @@ int main(int argc, char **argv)
 	const int vs_count = (int) vertex_shaders.size();
 	for (int i = 0; i < vs_count; i++)
 	{
-		if (!CompileShader(file, compiler, options, vertex_shaders[i], shader_language, api, debug, header, root_header, in_filename, vs_profile))
+		if (!CompileShader(file, compiler, options, vertex_shaders[i], shader_language, api, debug, header, root_header, in_filename, vs_profile, m_bindings))
 		{
 			res = COMPILE_ERROR;
 			goto quit;
@@ -1411,7 +1536,7 @@ int main(int argc, char **argv)
 	const int ps_count = (int) pixel_shaders.size();
 	for (int i = 0; i < ps_count; i++)
 	{
-		if (!CompileShader(file, compiler, options, pixel_shaders[i], shader_language, api, debug, header, root_header, in_filename, ps_profile))
+		if (!CompileShader(file, compiler, options, pixel_shaders[i], shader_language, api, debug, header, root_header, in_filename, ps_profile, m_bindings))
 		{
 			res = COMPILE_ERROR;
 			goto quit;
@@ -1421,7 +1546,7 @@ int main(int argc, char **argv)
 	const int cs_count = (int) compute_shaders.size();
 	for (int i = 0; i < cs_count; i++)
 	{
-		if (!CompileShader(file, compiler, options, compute_shaders[i], shader_language, api, debug, header, root_header, in_filename, cs_profile))
+		if (!CompileShader(file, compiler, options, compute_shaders[i], shader_language, api, debug, header, root_header, in_filename, cs_profile, m_bindings))
 		{
 			res = COMPILE_ERROR;
 			goto quit;

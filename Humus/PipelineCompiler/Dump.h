@@ -1,18 +1,22 @@
 
 
-layout(push_constant) uniform pcb {
-	layout(offset = 0) float4 ScaleBias;
+struct SConstants
+{
+	float4x4 WVP;
 };
-layout(set = 0, binding = 0) uniform Texture2D Texture;
-layout(set = 1, binding = 0) uniform SamplerState Filter;
 
-struct PsIn
+cbuffer cbColor : register(b0) { float4 Color; }
+cbuffer cbConstants : register(b1) { SConstants Constants; }
+Texture2D Texture : register(t0);
+SamplerState Filter : register(s0);
+
+struct PS_IN
 {
 #ifdef GLSL
-	vec2 TexCoord;
+	vec2 Tex;
 #else
-	float4 Position: SV_Position;
-	float2 TexCoord: TexCoord;
+	float4 Pos : SV_Position;
+	float2 Tex : TexCoord;
 #endif
 };
 

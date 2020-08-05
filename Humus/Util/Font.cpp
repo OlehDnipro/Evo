@@ -237,7 +237,9 @@ bool TexFont::CreateResources(Device device, const char *texture_file, const Ble
 
 	if ((m_Texture = CreateTexture(device, texture_file, 5)) == nullptr) return false;
 
-	SResourceDesc resources[] = { m_Texture };
+	if ((m_ScaleCB = CreateBuffer(device, SBufferParams(sizeof(float[4]), HEAP_DEFAULT, CONSTANT_BUFFER, "ScaleCB"))) == nullptr) return false;
+
+	SResourceDesc resources[] = { m_Texture, m_ScaleCB };
 	if ((m_ResourceTable = CreateResourceTable(device, m_RootSig, NFont::Resources, resources)) == nullptr) return false;
 
 	const SSamplerDesc samplers[] = { FILTER_TRILINEAR, 1, AM_CLAMP, AM_CLAMP, AM_CLAMP };
@@ -258,12 +260,20 @@ void TexFont::DestroyResources(Device device)
 	DestroyBuffer(device, m_VertexBuffer);
 	DestroyBuffer(device, m_IndexBuffer);
 	DestroyVertexSetup(device, m_VertexSetup);
+	DestroyBuffer(device, m_ScaleCB);
 }
 
 void TexFont::SetWindowSize(Device device, const int width, const int height)
 {
 	m_Width = width;
 	m_Height = height;
+}
+void TexFont::SetScale(Context context, float scale[4])
+{
+	SMapBufferParams map_cb(context, m_ScaleCB, 0, sizeof(float[4]));
+	void* data = MapBuffer(map_cb);
+	memcpy(data, &scale[0], sizeof(float[4]));
+	UnmapBuffer(map_cb);
 }
 
 void TexFont::DrawText(Context context, const float x_pos, const float y_pos, const float size_x, const float size_y, const char *text, uint length)
@@ -327,15 +337,16 @@ void TexFont::DrawText(Context context, const float x_pos, const float y_pos, co
 		x += size_x * w * 1.1f;
 	}
 	UnmapBuffer(map_vb);
-
+	float scale[] = { 2.0f / (float)m_Width, -2.0f / (float)m_Height, -1.0f, 1.0f };
+	SetScale(context, scale);
 
 	SetRootSignature(context, m_RootSig);
 	SetPipeline(context, m_Pipeline);
 	SetGraphicsResourceTable(context, NFont::Resources, m_ResourceTable);
 	SetGraphicsSamplerTable(context, NFont::Samplers, m_SamplerTable);
 
-	const float scale_bias[4] = { 2.0f / (float) m_Width, -2.0f / (float) m_Height, -1.0f, 1.0f };
-	SetRootConstants(context, NFont::ScaleBias, scale_bias, elementsof(scale_bias));
+	//const float scale_bias[4] = { 2.0f / (float) m_Width, -2.0f / (float) m_Height, -1.0f, 1.0f };
+	//SetRootConstants(context, NFont::ScaleBias, scale_bias, elementsof(scale_bias));
 
 	//float4* cb = (float4*) SetRootConstantBuffer(context, 0, sizeof(float4));
 	//*cb = float4(z, 0, 0, 0);

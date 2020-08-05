@@ -92,7 +92,11 @@ bool Primitives::CreateResources(Device device, BlendState opaque, BlendState tr
 		}
 	}
 
-	if ((m_VertexCB = CreateBuffer(device, SBufferParams(4 * sizeof(float4), HEAP_DEFAULT, CONSTANT_BUFFER, "PrimitivesVertexCB"))) == nullptr) return false;
+	if ((m_MatrixCB = CreateBuffer(device, SBufferParams(4 * sizeof(float4), HEAP_DEFAULT, CONSTANT_BUFFER, "PrimitivesVertexCB"))) == nullptr) return false;
+	if ((m_ColorCB = CreateBuffer(device, SBufferParams(sizeof(float4), HEAP_DEFAULT, CONSTANT_BUFFER, "ColorCB"))) == nullptr) return false;
+
+	SResourceDesc resources[] = {m_ColorCB, m_MatrixCB };
+	if ((m_ConstantTable = CreateResourceTable(device, m_RootSig, NPrimitives::CB, resources)) == nullptr) return false;
 
 	return true;
 }
@@ -112,13 +116,22 @@ void Primitives::DestroyResources(Device device)
 		DestroyBuffer(device, m_Setup[i].VertexBuffer);
 	}
 
-	DestroyBuffer(device, m_VertexCB);
+	DestroyBuffer(device, m_MatrixCB);
+	DestroyBuffer(device, m_ColorCB);
 	DestroyRootSignature(device, m_RootSig);
+}
+
+void Primitives::SetColor(Context context, const float* color)
+{
+	SMapBufferParams map_cb(context, m_ColorCB, 0, sizeof(float[4]));
+	void* data = MapBuffer(map_cb);
+	memcpy(data, color, sizeof(float[4]));
+	UnmapBuffer(map_cb);
 }
 
 void Primitives::SetMatrix(Context context, const float4x4 &matrix)
 {
-	SMapBufferParams map_cb(context, m_VertexCB, 0, sizeof(float4x4));
+	SMapBufferParams map_cb(context, m_MatrixCB, 0, sizeof(float4x4));
 	void* data = MapBuffer(map_cb);
 	memcpy(data, &matrix, sizeof(float4x4));
 	UnmapBuffer(map_cb);
@@ -208,10 +221,11 @@ void Primitives::DrawVertices(Context context, DrawSetup& setup, const void* ver
 	memcpy(data, vertices, vertex_count * vertex_stride);
 	UnmapBuffer(map_vb);
 
+	SetColor(context, color);
 
 	SetRootSignature(context, m_RootSig);
-	SetRootConstants(context, NPrimitives::Color, color, 4);
-	SetGraphicsConstantBuffer(context, NPrimitives::Constants, m_VertexCB);
+	//SetGraphicsConstantBuffer(context, NPrimitives::Constants, m_MatrixCB);
+	SetGraphicsResourceTable(context, NPrimitives::CB, m_ConstantTable);
 	if (resources)
 		SetGraphicsResourceTable(context, NPrimitives::Resources, resources);
 	if (samplers)

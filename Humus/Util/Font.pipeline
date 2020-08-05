@@ -28,10 +28,11 @@
 [Rootsig]
 
 ROOT_BEGIN
-	CONSTANT	float4 ScaleBias;
 
 	RT_BEGIN Resources
 		TEXTURE		Texture2D Texture;
+		CBUFFER	float4 ScaleBias;
+
 	RT_END
 
 	ST_BEGIN Samplers
