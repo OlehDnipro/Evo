@@ -344,10 +344,10 @@ void DemoApp::DrawGUI(Context context, uint buffer_index, const SProfileData* pr
 {
 	const float4x4 scale_bias
 	(
-		2.0f / (float) m_DeviceParams.m_Width, 0, 0, -1.0f,
-		0, -2.0f / (float) m_DeviceParams.m_Height, 0,  1.0f,
-		0, 0, 0, 0,
-		0, 0, 0, 1
+		2.0f / (float) m_DeviceParams.m_Width, 0, 0, 0,
+		0, -2.0f / (float) m_DeviceParams.m_Height, 0, 0,
+		0, 0, 1.0f, 0,
+		-1.0f, 1.0f, 0, 1
 	);
 	m_Primitives.SetMatrix(context, scale_bias);
 

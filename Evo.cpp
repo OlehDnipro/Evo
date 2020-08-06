@@ -38,12 +38,69 @@
 
 class EvoApp : public DemoApp
 {
+	Texture m_ColorBuffer;
+	Texture m_DepthBuffer;
+
+	RenderPass m_RenderPass;
+	RenderSetup m_RenderSetup[BUFFER_FRAMES];
 public:
     EvoApp() :DemoApp()
     {
         m_InitialUploadBufferSize = m_UploadBufferSize = 1024*1024;
     }
-	virtual void DrawFrame(Context context, uint buffer_index) {};
+	bool Init()
+	{
+		CreateRenderSetups();
+		return true;
+	}
+	void CreateRenderSetups()
+	{
+		m_RenderPass = CreateRenderPass(m_Device, GetBackBufferFormat(m_Device), IMGFMT_D16, CLEAR_COLOR | CLEAR_DEPTH, m_DeviceParams.m_MSAA);
+
+		const bool use_msaa = (m_DeviceParams.m_MSAA > 1);
+		if (use_msaa)
+		{
+			float4 clear_color(0, 0, 0, 0);
+
+			STextureParams cb_params;
+			cb_params.m_Width = m_DeviceParams.m_Width;
+			cb_params.m_Height = m_DeviceParams.m_Height;
+			cb_params.m_Format = GetBackBufferFormat(m_Device);
+			cb_params.m_MSAASampleCount = m_DeviceParams.m_MSAA;
+			cb_params.m_RenderTarget = true;
+			cb_params.m_ClearValue = clear_color;
+			m_ColorBuffer = CreateTexture(m_Device, cb_params);
+		}
+
+		STextureParams db_params;
+		db_params.m_Width = m_DeviceParams.m_Width;
+		db_params.m_Height = m_DeviceParams.m_Height;
+		db_params.m_Format = IMGFMT_D16;
+		db_params.m_MSAASampleCount = m_DeviceParams.m_MSAA;
+		db_params.m_DepthTarget = true;
+		m_DepthBuffer = CreateTexture(m_Device, db_params);
+
+		// A rendersetup for each buffered frame
+		for (uint i = 0; i < BUFFER_FRAMES; i++)
+		{
+			Texture back_buffer = GetBackBuffer(m_Device, i);
+			m_RenderSetup[i] = CreateRenderSetup(m_Device, m_RenderPass, use_msaa ? &m_ColorBuffer : &back_buffer, 1, m_DepthBuffer, use_msaa ? back_buffer : nullptr);
+		}
+	}
+	void DestroyRenderSetups()
+	{
+		for (uint i = 0; i < BUFFER_FRAMES; i++)
+			DestroyRenderSetup(m_Device, m_RenderSetup[i]);
+
+		DestroyTexture(m_Device, m_DepthBuffer);
+
+		DestroyRenderPass(m_Device, m_RenderPass);
+	}
+	void DrawFrame(Context context, uint buffer_index)
+	{
+		BeginRenderPass(context, "Backbuffer", m_RenderPass, m_RenderSetup[buffer_index], float4(0, 0, 0, 0));
+		EndRenderPass(context, m_RenderSetup[buffer_index]);
+	};
 };
 static DemoApp *app = nullptr; // Should come up with something prettier than this
 

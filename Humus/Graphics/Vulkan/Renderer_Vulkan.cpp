@@ -30,7 +30,7 @@
 #include <stdio.h>
 
 #ifdef DEBUG
-//#define USE_DEBUG_MARKERS
+#define USE_DEBUG_MARKERS
 #define USE_DEBUG_UTILS
 #endif
 
@@ -550,8 +550,8 @@ Device CreateDevice(DeviceParams& params)
 	
 #ifdef DEBUG
 	// Enable validation layer
-	static const char* validation_layers[] = { "VK_LAYER_LUNARG_standard_validation" };
-	instance_create_info.enabledLayerCount = 1;
+	static const char* validation_layers[] = { "VK_LAYER_LUNARG_standard_validation" , "VK_LAYER_RENDERDOC_Capture" };
+	instance_create_info.enabledLayerCount = 2;
 	instance_create_info.ppEnabledLayerNames = validation_layers;
 #endif
 
