@@ -345,7 +345,7 @@ void DemoApp::DrawGUI(Context context, uint buffer_index, const SProfileData* pr
 	const float4x4 scale_bias
 	(
 		2.0f / (float) m_DeviceParams.m_Width, 0, 0, 0,
-		0, -2.0f / (float) m_DeviceParams.m_Height, 0, 0,
+		0, -2.0f / (float) m_DeviceParams.m_Height, 0,0,
 		0, 0, 1.0f, 0,
 		-1.0f, 1.0f, 0, 1
 	);
@@ -640,6 +640,7 @@ void DemoApp::UpdateMouse(const int dx, const int dy)
 
 void DemoApp::CaptureMouse(const bool capture)
 {
+	/*
 #ifdef WIN32
 	if (capture != m_CapturedMouse)
 	{
@@ -666,6 +667,7 @@ void DemoApp::CaptureMouse(const bool capture)
 		m_CapturedMouse = capture;
 	}
 #endif
+*/
 }
 
 void DemoApp::OnCheckBoxClicked(CheckBox* checkbox)
