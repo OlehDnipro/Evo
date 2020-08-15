@@ -20,7 +20,7 @@
 \* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 
 #pragma once
-
+#include "../Platform.h"
 struct half
 {
 	unsigned short sh;
