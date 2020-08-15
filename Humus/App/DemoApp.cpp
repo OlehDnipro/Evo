@@ -95,7 +95,7 @@ bool DemoApp::Create()
 	BeginContext(context, m_InitialUploadBufferSize, "Startup", false);
 
 	m_Primitives.CreateResources(m_Device, GetDefaultBlendState(m_Device), m_BlendSrcAlpha);
-	m_Font.CreateResources(m_Device, "../Textures/Fonts/Consolas.dds", m_BlendSrcAlpha);
+	m_Font.CreateResources(m_Device, "../../Textures/Fonts/Consolas.dds", m_BlendSrcAlpha);
 	m_Font.SetWindowSize(m_Device, m_DeviceParams.m_Width, m_DeviceParams.m_Height);
 
 	const SSamplerDesc sampler = { FILTER_LINEAR, 1, AM_CLAMP, AM_CLAMP, AM_CLAMP };
