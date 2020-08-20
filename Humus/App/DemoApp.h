@@ -62,7 +62,6 @@ class DemoApp : public CheckBoxListener, public SliderListener, public DropDownL
 public:
 	DemoApp();
 	virtual ~DemoApp();
-
 	bool Create();
 	void Destroy();
 

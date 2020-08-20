@@ -22,6 +22,8 @@
 #include "Humus/App/DemoApp.h"
 
 #include "Humus/Windows/Resource.h"
+
+#include "Techniques/ShadowMapCascade.h"
 /*
 #include "../CPU.h"
 #include <direct.h>
@@ -35,7 +37,6 @@
 #endif
 
 #include <stdio.h>
-
 class EvoApp : public DemoApp
 {
 	Texture m_ColorBuffer;
@@ -43,14 +44,16 @@ class EvoApp : public DemoApp
 
 	RenderPass m_RenderPass;
 	RenderSetup m_RenderSetup[BUFFER_FRAMES];
+	ShadowMapCascade m_Shadows;
 public:
     EvoApp() :DemoApp()
     {
-        m_InitialUploadBufferSize = m_UploadBufferSize = 1024*1024;
+        m_InitialUploadBufferSize = m_UploadBufferSize = 1024*1024*8;
     }
 	bool Init()
 	{
 		CreateRenderSetups();
+		m_Shadows.CreateResources(m_Device);
 		return true;
 	}
 	void CreateRenderSetups()

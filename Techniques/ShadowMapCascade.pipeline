@@ -1,0 +1,70 @@
+
+struct VertexIn
+{
+	float3 pos    : Position;
+	float2 uv     : TexCoord;
+	float3 color  : Color;
+	float3 normal : Normal;
+};
+struct SPerFrame
+{
+	float4x4 projection;
+	float4x4 view;
+	float3 lightDir;
+};
+struct SPerModel
+{
+	float4x4 model;
+};
+struct PixelIn
+{
+	float4 posH    : SV_Position;
+	float3 posW    : Position0;
+	float3 posV    : Position1;
+	float2 uv      : TexCoord;
+	float3 color   : Color;
+	float3 normal  : Normal;
+};
+[Rootsig]
+ROOT_BEGIN
+	RT_BEGIN CB
+		CBUFFER SPerFrame perFrame;
+		CBUFFER SPerModel perModel;		
+	RT_END
+	RT_BEGIN Resources
+		TEXTURE Texture2D Texture;
+	RT_END
+	
+	ST_BEGIN Samplers
+		SAMPLER		SamplerState Filter;
+	ST_END
+ROOT_END
+[Vertex: VertexShader]
+
+void main(VertexIn vert, out PixelIn res) 
+{
+	res.color = vert.color;
+	res.normal = vert.normal;
+	res.uv = vert.uv;
+	res.posW = mul(float4(vert.pos, 1.0f), perModel.model).xyz;
+	res.posV = mul(float4(res.posW, 1.0f), perFrame.view).xyz;
+	res.posH = mul(float4(res.posV, 1.0f), perFrame.projection);
+}
+[Pixel: PixelShader]
+#define ambient 0.3
+
+void main(PixelIn pix, out float4 outFragColor: SV_TARGET)
+{
+	float4 color = Texture.Sample(Filter, pix.uv);
+	if (color.a < 0.5) {
+		clip(-1);
+	}
+// Directional light
+	float3 N = normalize(pix.normal);
+	float3 L = normalize(-perFrame.lightDir);
+	float3 H = normalize(L + pix.posV);
+	float diffuse = max(dot(N, L), ambient);
+	float3 lightColor = float3(1.0f,1.0f,1.0f);
+	outFragColor.rgb = max(lightColor * (diffuse * color.rgb), float3(0.0f, 0.0f, 0.0f));
+	outFragColor.a = color.a;
+} 

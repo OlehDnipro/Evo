@@ -160,7 +160,6 @@ inline T clamp(const T t, const T s0, const T s1)
 {
 	return min(max(t, s0), s1);
 }
-
 inline bool IsNewLine     (const char ch) { return (ch == '\r' || ch == '\n'); }
 inline bool IsSpace       (const char ch) { return (ch == ' ' || ch == '\t'); }
 inline bool IsWhiteSpace  (const char ch) { return IsSpace(ch) || IsNewLine(ch); }
