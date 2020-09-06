@@ -1932,8 +1932,13 @@ Pipeline CreatePipeline(Device device, const SPipelineParams& params)
 	vertex_input_state.vertexBindingDescriptionCount = stream_count;
 	vertex_input_state.pVertexBindingDescriptions = binding_descs;
 
-
+	 VkPipelineRasterizationDepthClipStateCreateInfoEXT ext;
+	ext.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_DEPTH_CLIP_STATE_CREATE_INFO_EXT;
+	ext.pNext = nullptr;
+	ext.flags = 0;
+	ext.depthClipEnable = false;
 	VkPipelineRasterizationStateCreateInfo rasterization_state = {};
+	rasterization_state.pNext = &ext;
 	rasterization_state.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
 	rasterization_state.polygonMode = VK_POLYGON_MODE_FILL;
 	rasterization_state.cullMode = (VkCullModeFlagBits) params.m_CullMode;

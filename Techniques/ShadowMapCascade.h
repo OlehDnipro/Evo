@@ -46,7 +46,34 @@ private:
 										VERTEX_COMPONENT_COLOR,
 										VERTEX_COMPONENT_NORMAL,
 									 });
-	std::vector<Dae::Model> m_Models;
-	std::vector<Texture> m_Textures;
+	struct SPerFrame
+	{
+		float4x4 projection;
+		float4x4 view;
+		float3 lightDir;
+	};
+	struct SPerModel
+	{
+		float4x4 model;
+	};
+	struct SimpleObject
+	{
+		Dae::Model m_Model;
+		Texture m_Texture;
+		Buffer m_CB;
+		float4x4 m_ModelMatrix;
+		ResourceTable m_ConstantTable;
+		ResourceTable m_ResourceTable;
+	};
+	std::vector<SimpleObject> m_Objects;
+	RootSignature m_RootSig;
+	Pipeline m_Pipeline;
+
+	float4x4 m_viewMatrix, m_projMatrix;
+	float3 lightDir;
+	Buffer m_FrameCB;
+	ResourceTable m_FrameConstantTable;
+
+	SamplerTable m_SamplerTable;
 	
 };

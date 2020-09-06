@@ -27,17 +27,18 @@ struct PixelIn
 };
 [Rootsig]
 ROOT_BEGIN
-	RT_BEGIN CB
-		CBUFFER SPerFrame perFrame;
-		CBUFFER SPerModel perModel;		
-	RT_END
-	RT_BEGIN Resources
-		TEXTURE Texture2D Texture;
-	RT_END
-	
 	ST_BEGIN Samplers
 		SAMPLER		SamplerState Filter;
 	ST_END
+	RT_BEGIN FrameConst
+		CBUFFER SPerFrame perFrame;		
+	RT_END
+	RT_BEGIN ModelConst
+		CBUFFER SPerModel perModel;		
+	RT_END
+	RT_BEGIN ModelResources
+		TEXTURE Texture2D Texture;
+	RT_END
 ROOT_END
 [Vertex: VertexShader]
 
@@ -46,9 +47,9 @@ void main(VertexIn vert, out PixelIn res)
 	res.color = vert.color;
 	res.normal = vert.normal;
 	res.uv = vert.uv;
-	res.posW = mul(float4(vert.pos, 1.0f), perModel.model).xyz;
-	res.posV = mul(float4(res.posW, 1.0f), perFrame.view).xyz;
-	res.posH = mul(float4(res.posV, 1.0f), perFrame.projection);
+	res.posW = mul(perModel.model, float4(vert.pos, 1.0f)).xyz;
+	res.posV = mul(perFrame.view, float4(res.posW, 1.0f)).xyz;
+	res.posH = mul(perFrame.projection, float4(res.posV, 1.0f));
 }
 [Pixel: PixelShader]
 #define ambient 0.3
@@ -56,9 +57,6 @@ void main(VertexIn vert, out PixelIn res)
 void main(PixelIn pix, out float4 outFragColor: SV_TARGET)
 {
 	float4 color = Texture.Sample(Filter, pix.uv);
-	if (color.a < 0.5) {
-		clip(-1);
-	}
 // Directional light
 	float3 N = normalize(pix.normal);
 	float3 L = normalize(-perFrame.lightDir);

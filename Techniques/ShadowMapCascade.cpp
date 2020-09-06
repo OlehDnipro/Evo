@@ -20,7 +20,7 @@
 \* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 
 #include "ShadowMapCascade.h"
-//#include "ShadowMapCascade.pipeline.h"
+#include "ShadowMapCascade.pipeline.h"
 
 //const uint VB_SIZE = 16*1024;
 
@@ -35,16 +35,33 @@ ShadowMapCascade::~ShadowMapCascade()
 
 bool ShadowMapCascade::CreateResources(Device device)
 {
-	m_Models.resize(3);
-	m_Models[0].loadFromFile("../../models/terrain_simple.dae", vertexLayout, 1.0f, device);
-	m_Models[1].loadFromFile("../../models/oak_trunk.dae", vertexLayout, 2.0f, device);
-	m_Models[2].loadFromFile("../../models/oak_leafs.dae", vertexLayout, 2.0f, device);
+	if ((m_RootSig = CreateRootSignature(device, NShadowMapCascade::RootSig)) == nullptr) return false;
 
-	m_Textures.resize(3);
-	m_Textures[0] = CreateTexture(device, "../../Textures/gridlines.dds");
-	m_Textures[1] = CreateTexture(device, "../../Textures/oak_bark.dds");
-	m_Textures[2] = CreateTexture(device, "../../Textures/oak_leafs.dds");
+	m_Objects.resize(3);
+	m_Objects[0].m_Model.loadFromFile("../../models/terrain_simple.dae", vertexLayout, 1.0f, device);
+	m_Objects[1].m_Model.loadFromFile("../../models/oak_trunk.dae", vertexLayout, 2.0f, device);
+	m_Objects[2].m_Model.loadFromFile("../../models/oak_leafs.dae", vertexLayout, 2.0f, device);
 
+	m_Objects[0].m_Texture = CreateTexture(device, "../../Textures/gridlines.dds");
+	m_Objects[1].m_Texture = CreateTexture(device, "../../Textures/oak_bark.dds");
+	m_Objects[2].m_Texture = CreateTexture(device, "../../Textures/oak_leafs.dds");
+	for (int i = 0; i < 3; i++)
+	{
+		SBufferParams cb_params = { sizeof(SPerModel), HeapType::HEAP_DEFAULT, Usage::CONSTANT_BUFFER, "" };
+		m_Objects[i].m_CB = CreateBuffer(device, cb_params);
+		float4x4 mtx; mtx.identity();
+		
+		SMapBufferParams map_cb(GetMainContext(device), m_Objects[i].m_CB, 0, sizeof(SPerModel));
+		void* data = MapBuffer(map_cb);
+		memcpy(data, &mtx, sizeof(SPerModel));
+		UnmapBuffer(map_cb);
+
+		SResourceDesc constants[] = { m_Objects[i].m_CB };
+		if ((m_Objects[i].m_ConstantTable = CreateResourceTable(device, m_RootSig, NShadowMapCascade::ModelConst, constants)) == nullptr) return false;
+		SResourceDesc resources[] = { m_Objects[i].m_Texture };
+		if ((m_Objects[i].m_ResourceTable = CreateResourceTable(device, m_RootSig, NShadowMapCascade::ModelResources, resources)) == nullptr) return false;
+
+	}
 	const AttribDesc format[] =
 	{
 		{ 0, VF_FLOAT3, "Position"   },
@@ -52,16 +69,15 @@ bool ShadowMapCascade::CreateResources(Device device)
 		{ 0, VF_FLOAT3, "Color" },
 		{ 0, VF_FLOAT3, "Normal" },
 	};
-	/*
-	if ((m_RootSig = CreateRootSignature(device, NShadowMapCascade::RootSig)) == nullptr) return false;
-
+	
+	
 	SPipelineParams p_params;
 	p_params.m_Name = "ShadowMapCascade";
 	p_params.m_RootSignature = m_RootSig;
 	p_params.m_RenderPass = GetBackBufferRenderPass(device);
 
-	p_params.m_VS = NShadowMapCascade::VS;
-	p_params.m_PS = NShadowMapCascade::PS;
+	p_params.m_VS = NShadowMapCascade::VertexShader;
+	p_params.m_PS = NShadowMapCascade::PixelShader;
 		
 	p_params.m_Attribs = format;
 	p_params.m_AttribCount = 4;
@@ -71,8 +87,30 @@ bool ShadowMapCascade::CreateResources(Device device)
 	p_params.m_BlendState = GetDefaultBlendState(device);
 	m_Pipeline = CreatePipeline(device, p_params);
 
-	SResourceDesc resources[] = {m_ColorCB, m_MatrixCB };
-	*/
+	const SSamplerDesc samplers[] = { FILTER_TRILINEAR, 1, AM_WRAP, AM_WRAP, AM_WRAP };
+	if ((m_SamplerTable = CreateSamplerTable(device, m_RootSig, NShadowMapCascade::Samplers, samplers)) == nullptr) return false;
+	
+	SBufferParams cb_params = { sizeof(SPerFrame), HeapType::HEAP_DEFAULT, Usage::CONSTANT_BUFFER, "" };
+	m_FrameCB = CreateBuffer(device, cb_params);
+
+	m_viewMatrix = float4x4(
+		 1, -0.04,  -0.15,   0 ,
+		 0,      1, -0.3, 0,
+		 0.15, 0.3, 2, 0,
+		-0.5, 0.5, -2.5, 1
+	);
+	m_projMatrix = PerspectiveMatrix(PI / 4, 600.0f / 800.0f, 0.5, 48);
+	lightDir = { -6.18, 20, -19 };
+	SMapBufferParams map_cb(GetMainContext(device), m_FrameCB, 0, sizeof(SPerFrame));
+	char* data = (char*)MapBuffer(map_cb);
+	memcpy(data, &m_projMatrix, sizeof(float4x4));
+	memcpy(data + sizeof(float4x4), &m_viewMatrix, sizeof(float4x4));
+	memcpy(data + 2*sizeof(float4x4), &lightDir, sizeof(float3));
+	UnmapBuffer(map_cb);
+
+	SResourceDesc constants[] = { m_FrameCB };
+	if ((m_FrameConstantTable = CreateResourceTable(device, m_RootSig, NShadowMapCascade::FrameConst, constants)) == nullptr) return false;
+	
 	return true;
 }
 
@@ -108,31 +146,18 @@ void ShadowMapCascade::SetMatrix(Context context, const float4x4 &matrix)
 
 void ShadowMapCascade::Draw(Context context)
 {
-/*	if (setup.BufferPos + vertex_count >= VB_SIZE)
-		setup.BufferPos = 0;
-
-	SMapBufferParams map_vb(context, setup.VertexBuffer, setup.BufferPos * vertex_stride, vertex_count * vertex_stride);
-	void* data = MapBuffer(map_vb);
-	memcpy(data, vertices, vertex_count * vertex_stride);
-	UnmapBuffer(map_vb);
-
-	SetColor(context, color);
 
 	SetRootSignature(context, m_RootSig);
-	//SetGraphicsConstantBuffer(context, NShadowMapCascade::Constants, m_MatrixCB);
-	SetGraphicsResourceTable(context, NShadowMapCascade::CB, m_ConstantTable);
-	if (resources)
-		SetGraphicsResourceTable(context, NShadowMapCascade::Resources, resources);
-	if (samplers)
-		SetGraphicsSamplerTable(context, NShadowMapCascade::Samplers, samplers);
+	SetGraphicsResourceTable(context, NShadowMapCascade::FrameConst, m_FrameConstantTable);
+	SetGraphicsSamplerTable(context, NShadowMapCascade::Samplers, m_SamplerTable);
+	SetPipeline(context, m_Pipeline);
+	for (int i = 0; i < 3; i++)
+	{
+		SetGraphicsResourceTable(context, NShadowMapCascade::ModelConst, m_Objects[i].m_ConstantTable);
+		SetGraphicsResourceTable(context, NShadowMapCascade::ModelResources, m_Objects[i].m_ResourceTable);
+		SetVertexSetup(context, m_Objects[i].m_Model.GetVertexSetup());
+		DrawIndexed(context, 0, m_Objects[i].m_Model.indexCount);
+	}
 
-	SetPipeline(context, setup.m_Pipeline[primitive_type][blend_mode]);
-
-	SetVertexSetup(context, setup.VertexSetup);
-
-	Draw(context, setup.BufferPos, vertex_count);
-
-
-	setup.BufferPos += vertex_count;*/
 }
 

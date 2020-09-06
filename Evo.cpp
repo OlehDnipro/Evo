@@ -101,8 +101,9 @@ public:
 	}
 	void DrawFrame(Context context, uint buffer_index)
 	{
-		BeginRenderPass(context, "Backbuffer", m_RenderPass, m_RenderSetup[buffer_index], float4(0, 0, 0, 0));
-		EndRenderPass(context, m_RenderSetup[buffer_index]);
+		BeginRenderPass(context, "Backbuffer", GetBackBufferRenderPass(m_Device), GetBackBufferSetup(m_Device, buffer_index), float4(0, 0, 0, 0));
+		m_Shadows.Draw(context);
+		EndRenderPass(context, GetBackBufferSetup(m_Device, buffer_index));
 	};
 };
 static DemoApp *app = nullptr; // Should come up with something prettier than this

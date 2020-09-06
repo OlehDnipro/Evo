@@ -424,7 +424,7 @@ float4 normalize(const float4 &v);
 /************************************************************************/
 
 
-
+//column-aligned
 struct ALIGN(16) float4x4
 {
 	float4 rows[4];
@@ -440,6 +440,10 @@ struct ALIGN(16) float4x4
 		const float m30, const float m31, const float m32, const float m33);
 	
 	void transpose();
+	void identity() {
+		rows[0] = rows[1] = rows[2] = rows[3] = {};
+		rows[0][0] = rows[1][1] = rows[2][2] = rows[3][3] = 1;
+	}
 };
 
 float4x4 operator * (const float4x4 &mat, const float s);
