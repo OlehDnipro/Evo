@@ -57,6 +57,10 @@ void main(VertexIn vert, out PixelIn res)
 void main(PixelIn pix, out float4 outFragColor: SV_TARGET)
 {
 	float4 color = Texture.Sample(Filter, pix.uv);
+	if(color.a < 0.5)
+	{
+		clip(-1);
+	}
 // Directional light
 	float3 N = normalize(pix.normal);
 	float3 L = normalize(-perFrame.lightDir);
