@@ -1393,7 +1393,7 @@ int main(int argc, char **argv)
 
 			if (api == Vulkan)
 			{
-				options = "\"%s\" -spirv -fvk-use-dx-position-w -fvk-use-dx-layout -Vd -WX -O3 -T %s -Fo %s %s";
+				options = "\"%s\" -spirv -Zpr -fvk-use-dx-position-w -fvk-use-dx-layout -Vd -WX -O3 -T %s -Fo %s %s";
 			}
 			else
 			{

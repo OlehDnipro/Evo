@@ -114,7 +114,7 @@ namespace Dae
 			uint32_t indexCount;
 		};
 		std::vector<ModelPart> parts;
-		VertexSetup GetVertexSetup() { return m_Setup; };
+		VertexSetup GetVertexSetup() const{ return m_Setup; };
 		static const int defaultFlags = aiProcess_FlipWindingOrder | aiProcess_Triangulate | aiProcess_PreTransformVertices | aiProcess_CalcTangentSpace | aiProcess_GenSmoothNormals;
 
 		struct Dimension
@@ -123,6 +123,7 @@ namespace Dae
 			vec3 max = vec3(-FLT_MAX, -FLT_MAX, -FLT_MAX);
 			vec3 size;
 		} dim;
+		vec3 model_center;
 
 		/** @brief Release all Vulkan resources of this model */
 		void destroy()
@@ -262,7 +263,7 @@ namespace Dae
 					}
 
 					dim.size = dim.max - dim.min;
-
+					model_center = (dim.max + dim.min) / 2;
 					parts[i].vertexCount = paiMesh->mNumVertices;
 
 					uint32_t indexBase = static_cast<uint32_t>(indexBuffer.size());

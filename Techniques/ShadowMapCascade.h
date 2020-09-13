@@ -56,16 +56,28 @@ private:
 	{
 		float4x4 model;
 	};
-	struct SimpleObject
+	class SimpleObjectInstance;
+	class SimpleObject
 	{
 		Dae::Model m_Model;
 		Texture m_Texture;
+		friend class SimpleObjectInstance;
+		public:
+		bool Init(Device device, VertexLayout layout, const char* model, const char* texture, float scale);
+	};
+	class SimpleObjectInstance
+	{
+		const SimpleObject& m_Object;
 		Buffer m_CB;
 		float4x4 m_ModelMatrix;
 		ResourceTable m_ConstantTable;
 		ResourceTable m_ResourceTable;
+	public:
+		SimpleObjectInstance(const SimpleObject& object, Device device, RootSignature root, float4x4 mtx);
+		void Draw(Context context);
 	};
 	std::vector<SimpleObject> m_Objects;
+	std::vector<SimpleObjectInstance*> m_ObjectInstances;
 	RootSignature m_RootSig;
 	Pipeline m_Pipeline;
 
