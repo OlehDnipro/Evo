@@ -128,7 +128,7 @@ bool ShadowMapCascade::CreateResources(Device device, RenderPass pass)
 	m_ObjectInstances.resize(11);
 	m_ObjectInstances[0] = new SimpleObjectInstance(m_Objects[0], device, m_RootSig, mtx);
 	const std::vector<vec3> positions = {
-	vec3(0.0f, 0.0f, 0.0f),
+	vec3(0.0f, 1.0f, 0.0f),
 	vec3(1.25f, 0.25f, 1.25f),
 	vec3(-1.25f, -0.2f, 1.25f),
 	vec3(1.25f, 0.1f, -1.25f),
@@ -178,12 +178,12 @@ bool ShadowMapCascade::CreateResources(Device device, RenderPass pass)
 	
 	SBufferParams cb_params = { sizeof(SPerFrame), HeapType::HEAP_DEFAULT, Usage::CONSTANT_BUFFER, "" };
 	m_FrameCB = CreateBuffer(device, cb_params);
-	vec3 lightPos = { -6.18, 20, -19 };
+	vec3 lightPos = { -6.18, -20, -19 };
 	lightDir = normalize(lightPos);
 	Camera cam;
-	/*cam.SetRot(vec3(-17.0f, 7.0f, 0.0f));
-	cam.SetPos(vec3(-0.12f, 1.14f, -2.25f));*/
-	cam.lookat(vec3(0, -5, 0), vec3(0, 0.382, 0), vec3(0, 0, -1));
+	cam.SetRot(vec3(90.0f, 0.0f, 45.0f));
+	cam.SetPos(vec3(0, 5, 0));
+	//cam.lookat(vec3(0, 5, 0), vec3(0, 0.382, 0), vec3(0, 0, -1));
 	m_viewMatrix = cam.get();	
 	m_projMatrix = PerspectiveMatrix(PI / 4, 600.0f / 800.0f, 0.001, 100);
 	//float4x4 m = mul(m_projMatrix, m_viewMatrix );
