@@ -32,7 +32,7 @@ public:
 	ShadowMapCascade();
 	~ShadowMapCascade();
 
-	bool CreateResources(Device device);
+	bool CreateResources(Device device, RenderPass pass);
 	void DestroyResources(Device device);
 
 	void SetMatrix(Context context, const float4x4 &matrix);

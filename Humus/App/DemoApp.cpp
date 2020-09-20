@@ -79,7 +79,7 @@ bool DemoApp::Create()
 	m_DeviceParams.m_FullscreenHeight = m_Config.GetInteger("FullscreenHeight", 768);
 	m_DeviceParams.m_WindowedWidth    = m_Config.GetInteger("WindowedWidth",    800);
 	m_DeviceParams.m_WindowedHeight   = m_Config.GetInteger("WindowedHeight",   600);
-	m_DeviceParams.m_MSAA       = m_Config.GetInteger("MSAA",    4);
+	m_DeviceParams.m_MSAA = 1;// m_Config.GetInteger("MSAA", 4);
 	m_DeviceParams.m_Fullscreen = m_Config.GetBool("Fullscreen", false);
 	m_DeviceParams.m_VSync      = m_Config.GetBool("VSync",      false);
 	

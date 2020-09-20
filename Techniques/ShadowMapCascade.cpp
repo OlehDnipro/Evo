@@ -30,10 +30,11 @@ class Camera
 	void update()
 	{
 		mtx.identity();
-		mtx = mul(mtx, RotateX(m_angle.x));
-		mtx = mul(mtx, RotateY(m_angle.y));
-		mtx = mul(mtx, RotateZ(m_angle.z));
+		mtx = mul(mtx, RotateX(m_angle.x*PI/180));
+		mtx = mul(mtx, RotateY(m_angle.y*PI/180));
+		mtx = mul(mtx, RotateZ(m_angle.z*PI/180));
 		mtx = mul(translate(m_pos), mtx);//TRS for column-order
+		mtx = inverse(mtx);
 	}public:
 	Camera() { mtx.identity(); }
 	float4x4 lookat(vec3 eye, vec3 center, vec3 up)
@@ -42,16 +43,17 @@ class Camera
 		vec3 const xaxis(normalize(cross(up, zaxis)));
 		vec3 const yaxis(cross(zaxis, xaxis));
 		float4x4 R; R.identity();
+		// put vectors to columns(as column-major) to get basis for camera 
 		R(0,0) = xaxis.x;
-		R(0,1) = xaxis.y;
-		R(0,2) = xaxis.z;
-		R(1,0) = yaxis.x;
+		R(1,0) = xaxis.y;
+		R(2,0) = xaxis.z;
+		R(0,1) = yaxis.x;
 		R(1,1) = yaxis.y;
-		R(1,2) = yaxis.z;
-		R(2,0) = zaxis.x;
-		R(2,1) = zaxis.y;
+		R(2,1) = yaxis.z;
+		R(0,2) = zaxis.x;
+		R(1,2) = zaxis.y;
 		R(2,2) = zaxis.z;
-		R.transpose();//inverted=transposed for ortogonal
+		R.transpose();//inverted=transposed for ortogonal to get view matrix
 		float4x4 T; T.identity();//neg - as inverted
 		T(0,3) = -eye.x;
 		T(1,3) = -eye.y;
@@ -115,7 +117,7 @@ void ShadowMapCascade::SimpleObjectInstance::Draw(Context context)
 	SetVertexSetup(context, m_Object.m_Model.GetVertexSetup());
 	DrawIndexed(context, 0, m_Object.m_Model.indexCount);
 }
-bool ShadowMapCascade::CreateResources(Device device)
+bool ShadowMapCascade::CreateResources(Device device, RenderPass pass)
 {
 	if ((m_RootSig = CreateRootSignature(device, NShadowMapCascade::RootSig)) == nullptr) return false;
 	float4x4 mtx; mtx.identity();
@@ -156,7 +158,7 @@ bool ShadowMapCascade::CreateResources(Device device)
 	SPipelineParams p_params;
 	p_params.m_Name = "ShadowMapCascade";
 	p_params.m_RootSignature = m_RootSig;
-	p_params.m_RenderPass = GetBackBufferRenderPass(device);
+	p_params.m_RenderPass = pass;
 
 	p_params.m_VS = NShadowMapCascade::VertexShader;
 	p_params.m_PS = NShadowMapCascade::PixelShader;
@@ -167,8 +169,10 @@ bool ShadowMapCascade::CreateResources(Device device)
 	p_params.m_PrimitiveType = PRIM_TRIANGLES;
 
 	p_params.m_BlendState = GetDefaultBlendState(device);
+	p_params.m_DepthTest = true;
+	p_params.m_DepthWrite = true;
+	p_params.m_DepthFunc = EComparisonFunc::LESS;
 	m_Pipeline = CreatePipeline(device, p_params);
-
 	const SSamplerDesc samplers[] = { FILTER_TRILINEAR, 1, AM_WRAP, AM_WRAP, AM_WRAP };
 	if ((m_SamplerTable = CreateSamplerTable(device, m_RootSig, NShadowMapCascade::Samplers, samplers)) == nullptr) return false;
 	
@@ -177,8 +181,9 @@ bool ShadowMapCascade::CreateResources(Device device)
 	vec3 lightPos = { -6.18, 20, -19 };
 	lightDir = normalize(lightPos);
 	Camera cam;
-	cam.lookat(vec3(0, 5, 0), vec3(0, 0.382, 0), vec3(0, 0, -1));
-
+	/*cam.SetRot(vec3(-17.0f, 7.0f, 0.0f));
+	cam.SetPos(vec3(-0.12f, 1.14f, -2.25f));*/
+	cam.lookat(vec3(0, -5, 0), vec3(0, 0.382, 0), vec3(0, 0, -1));
 	m_viewMatrix = cam.get();	
 	m_projMatrix = PerspectiveMatrix(PI / 4, 600.0f / 800.0f, 0.001, 100);
 	//float4x4 m = mul(m_projMatrix, m_viewMatrix );
