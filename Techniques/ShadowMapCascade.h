@@ -26,6 +26,61 @@
 #include "../Humus/Util/ModelDae.h"
 using namespace Dae;
 #include <vector>
+class Camera
+{
+	float4x4 mtx;
+	vec3 m_angle = {}, m_pos = {};
+	void update()
+	{
+		mtx.identity();
+		mtx = mul(mtx, RotateX(m_angle.x));
+		mtx = mul(mtx, RotateY(m_angle.y));
+		mtx = mul(mtx, RotateZ(m_angle.z));
+		mtx = mul(translate(m_pos), mtx);//TRS for column-order
+		mtx = inverse(mtx);
+	}public:
+		Camera() { mtx.identity(); }
+		float4x4 lookat(vec3 eye, vec3 center, vec3 up)
+		{
+			vec3 const zaxis(normalize(center - eye));
+			vec3 const xaxis(normalize(cross(up, zaxis)));
+			vec3 const yaxis(cross(zaxis, xaxis));
+			float4x4 R; R.identity();
+			// put vectors to columns(as column-major) to get basis for camera 
+			R(0, 0) = xaxis.x;
+			R(1, 0) = xaxis.y;
+			R(2, 0) = xaxis.z;
+			R(0, 1) = yaxis.x;
+			R(1, 1) = yaxis.y;
+			R(2, 1) = yaxis.z;
+			R(0, 2) = zaxis.x;
+			R(1, 2) = zaxis.y;
+			R(2, 2) = zaxis.z;
+			R.transpose();//inverted=transposed for ortogonal to get view matrix
+			float4x4 T; T.identity();//neg - as inverted
+			T(0, 3) = -eye.x;
+			T(1, 3) = -eye.y;
+			T(2, 3) = -eye.z;
+			//for column-major TRS
+			//(T*R*S)^(-1) = ((S)^(-1))*((R)^(-1))*((T)^(-1))
+			mtx = mul(R, T);
+			return mtx;
+		}
+		float4x4 SetRot(vec3 angles)
+		{
+			m_angle = angles;
+			update();
+			return mtx;
+		}
+		float4x4 SetPos(vec3 pos)
+		{
+			m_pos = pos;
+			update();
+			return mtx;
+		}
+
+		float4x4 get() { return mtx; }
+};
 class ShadowMapCascade
 {
 public:
@@ -38,6 +93,7 @@ public:
 	void SetMatrix(Context context, const float4x4 &matrix);
 	//RootSignature GetRootSignature() const { return m_RootSig; }
 	void Draw(Context context);
+	void SetCamera( vec3 pos, vec3 rot);
 
 private:
 	Dae::VertexLayout vertexLayout = Dae::VertexLayout({
@@ -56,6 +112,7 @@ private:
 	{
 		float4x4 model;
 	};
+	Camera m_Camera;
 	class SimpleObjectInstance;
 	class SimpleObject
 	{

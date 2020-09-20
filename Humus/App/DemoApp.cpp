@@ -557,12 +557,11 @@ bool DemoApp::OnMouseButton(const int x, const int y, const MouseButton button, 
 				}
 			} while (m_Widgets.GoToNext());
 		}
-
-		if (button == MOUSE_LEFT && pressed)
-		{
-			CaptureMouse(true);
-			return true;
-		}
+	}
+	if (button == MOUSE_RIGHT)
+	{
+		CaptureMouse(pressed);
+		return true;
 	}
 	return false;
 }
@@ -640,7 +639,7 @@ void DemoApp::UpdateMouse(const int dx, const int dy)
 
 void DemoApp::CaptureMouse(const bool capture)
 {
-	/*
+	
 #ifdef WIN32
 	if (capture != m_CapturedMouse)
 	{
@@ -667,7 +666,7 @@ void DemoApp::CaptureMouse(const bool capture)
 		m_CapturedMouse = capture;
 	}
 #endif
-*/
+
 }
 
 void DemoApp::OnCheckBoxClicked(CheckBox* checkbox)

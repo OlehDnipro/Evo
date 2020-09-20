@@ -99,6 +99,20 @@ public:
 
 		DestroyRenderPass(m_Device, m_RenderPass);
 	}
+	void UpdateCamera()
+	{
+		DemoApp::UpdateCamera();
+		m_Shadows.SetCamera(m_CamPos, vec3(m_AngleX, m_AngleY, 0));
+	}
+	virtual void ResetCamera()
+	{
+		m_CamPos = float3(0.0f, 5.0f, 0.0f);
+		m_CamDir = float3(0.0f, 0.0f, 0.0f);
+
+		m_AngleX = PI/2;
+		m_AngleY = 0;
+	}
+
 	void DrawFrame(Context context, uint buffer_index)
 	{
 		BeginRenderPass(context, "Backbuffer", m_RenderPass, m_RenderSetup[buffer_index], float4(0, 0, 0, 0));

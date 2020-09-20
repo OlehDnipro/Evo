@@ -23,61 +23,7 @@
 #include "ShadowMapCascade.pipeline.h"
 
 //const uint VB_SIZE = 16*1024;
-class Camera
-{
-	float4x4 mtx;
-	vec3 m_angle = {}, m_pos = {};
-	void update()
-	{
-		mtx.identity();
-		mtx = mul(mtx, RotateX(m_angle.x*PI/180));
-		mtx = mul(mtx, RotateY(m_angle.y*PI/180));
-		mtx = mul(mtx, RotateZ(m_angle.z*PI/180));
-		mtx = mul(translate(m_pos), mtx);//TRS for column-order
-		mtx = inverse(mtx);
-	}public:
-	Camera() { mtx.identity(); }
-	float4x4 lookat(vec3 eye, vec3 center, vec3 up)
-	{	
-		vec3 const zaxis(normalize(center - eye));
-		vec3 const xaxis(normalize(cross(up, zaxis)));
-		vec3 const yaxis(cross(zaxis, xaxis));
-		float4x4 R; R.identity();
-		// put vectors to columns(as column-major) to get basis for camera 
-		R(0,0) = xaxis.x;
-		R(1,0) = xaxis.y;
-		R(2,0) = xaxis.z;
-		R(0,1) = yaxis.x;
-		R(1,1) = yaxis.y;
-		R(2,1) = yaxis.z;
-		R(0,2) = zaxis.x;
-		R(1,2) = zaxis.y;
-		R(2,2) = zaxis.z;
-		R.transpose();//inverted=transposed for ortogonal to get view matrix
-		float4x4 T; T.identity();//neg - as inverted
-		T(0,3) = -eye.x;
-		T(1,3) = -eye.y;
-		T(2,3) = -eye.z;
-		//for column-major TRS
-		//(T*R*S)^(-1) = ((S)^(-1))*((R)^(-1))*((T)^(-1))
-		mtx = mul(R,T);
-		return mtx;
-	}
-	float4x4 SetRot(vec3 angles)
-	{
-		m_angle = angles;
-		update();
-		return mtx;
-	}
-	float4x4 SetPos(vec3 pos)
-	{
-		m_pos = pos;
-		update();
-		return mtx;
-	}
 
-	float4x4 get() { return mtx; }
-};
 
 ShadowMapCascade::ShadowMapCascade()
 {
@@ -116,6 +62,12 @@ void ShadowMapCascade::SimpleObjectInstance::Draw(Context context)
 	SetGraphicsResourceTable(context, NShadowMapCascade::ModelResources, m_ResourceTable);
 	SetVertexSetup(context, m_Object.m_Model.GetVertexSetup());
 	DrawIndexed(context, 0, m_Object.m_Model.indexCount);
+}
+void ShadowMapCascade::SetCamera(vec3 pos, vec3 rot)
+{
+	m_Camera.SetPos(pos);
+	m_Camera.SetRot(rot);
+	m_viewMatrix = m_Camera.get();
 }
 bool ShadowMapCascade::CreateResources(Device device, RenderPass pass)
 {
@@ -179,22 +131,8 @@ bool ShadowMapCascade::CreateResources(Device device, RenderPass pass)
 	SBufferParams cb_params = { sizeof(SPerFrame), HeapType::HEAP_DEFAULT, Usage::CONSTANT_BUFFER, "" };
 	m_FrameCB = CreateBuffer(device, cb_params);
 	vec3 lightPos = { -6.18, -20, -19 };
-	lightDir = normalize(lightPos);
-	Camera cam;
-	cam.SetRot(vec3(90.0f, 0.0f, 45.0f));
-	cam.SetPos(vec3(0, 5, 0));
-	//cam.lookat(vec3(0, 5, 0), vec3(0, 0.382, 0), vec3(0, 0, -1));
-	m_viewMatrix = cam.get();	
 	m_projMatrix = PerspectiveMatrix(PI / 4, 600.0f / 800.0f, 0.001, 100);
-	//float4x4 m = mul(m_projMatrix, m_viewMatrix );
-	//m.transpose();
-	//m_projMatrix = m;
-	SMapBufferParams map_cb(GetMainContext(device), m_FrameCB, 0, sizeof(SPerFrame));
-	char* data = (char*)MapBuffer(map_cb);
-	memcpy(data, &m_projMatrix, sizeof(float4x4));
-	memcpy(data + sizeof(float4x4), &m_viewMatrix, sizeof(float4x4));
-	memcpy(data + 2*sizeof(float4x4), &lightDir, sizeof(float3));
-	UnmapBuffer(map_cb);
+	lightDir = normalize(lightPos);
 
 	SResourceDesc constants[] = { m_FrameCB };
 	if ((m_FrameConstantTable = CreateResourceTable(device, m_RootSig, NShadowMapCascade::FrameConst, constants)) == nullptr) return false;
@@ -234,7 +172,12 @@ void ShadowMapCascade::SetMatrix(Context context, const float4x4 &matrix)
 
 void ShadowMapCascade::Draw(Context context)
 {
-
+	SMapBufferParams map_cb(context, m_FrameCB, 0, sizeof(SPerFrame));
+	char* data = (char*)MapBuffer(map_cb);
+	memcpy(data, &m_projMatrix, sizeof(float4x4));
+	memcpy(data + sizeof(float4x4), &m_viewMatrix, sizeof(float4x4));
+	memcpy(data + 2 * sizeof(float4x4), &lightDir, sizeof(float3));
+	UnmapBuffer(map_cb);
 	SetRootSignature(context, m_RootSig);
 	SetGraphicsResourceTable(context, NShadowMapCascade::FrameConst, m_FrameConstantTable);
 	SetGraphicsSamplerTable(context, NShadowMapCascade::Samplers, m_SamplerTable);
