@@ -2599,6 +2599,8 @@ void SetTextureData(Context context, Texture texture, uint mip, uint slice, cons
 	image_copy.imageExtent.width  = w;
 	image_copy.imageExtent.height = h;
 	image_copy.imageExtent.depth  = d;
+	image_copy.bufferRowLength = /*blocks number*/(dst_pitch / format_size) * /*pixels per block*/(w / cols)/*=pixel number*/;
+	image_copy.bufferImageHeight = h;
 	vkCmdCopyBufferToImage(context->m_CommandBuffer, context->m_Allocator->m_UploadBuffer->m_Buffer, texture->m_Image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &image_copy);
 
 
