@@ -130,9 +130,9 @@ bool ShadowMapCascade::CreateResources(Device device, RenderPass pass)
 	
 	SBufferParams cb_params = { sizeof(SPerFrame), HeapType::HEAP_DEFAULT, Usage::CONSTANT_BUFFER, "" };
 	m_FrameCB = CreateBuffer(device, cb_params);
-	vec3 lightPos = { -6.18, -20, -19 };
-	m_projMatrix = PerspectiveMatrix(PI / 4, 720.0f / 1280.0f, 0.001, 100);
-	lightDir = normalize(lightPos);
+	vec3 lightPos = { 6.18, 20, -19 };
+	m_projMatrix = PerspectiveMatrix(PI / 4, 720.0f / 1280.0f, 0.5, 50);
+	lightDir = normalize(-lightPos);
 
 	SResourceDesc constants[] = { m_FrameCB };
 	if ((m_FrameConstantTable = CreateResourceTable(device, m_RootSig, NShadowMapCascade::FrameConst, constants)) == nullptr) return false;
