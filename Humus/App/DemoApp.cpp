@@ -75,10 +75,10 @@ DemoApp::~DemoApp()
 bool DemoApp::Create()
 {
 	m_Config.SetSection("Video");
-	m_DeviceParams.m_FullscreenWidth  = m_Config.GetInteger("FullscreenWidth",  1024);
-	m_DeviceParams.m_FullscreenHeight = m_Config.GetInteger("FullscreenHeight", 768);
-	m_DeviceParams.m_WindowedWidth    = m_Config.GetInteger("WindowedWidth",    1024);
-	m_DeviceParams.m_WindowedHeight   = m_Config.GetInteger("WindowedHeight",   768);
+	m_DeviceParams.m_FullscreenWidth  = m_Config.GetInteger("FullscreenWidth",  1280);
+	m_DeviceParams.m_FullscreenHeight = m_Config.GetInteger("FullscreenHeight", 720);
+	m_DeviceParams.m_WindowedWidth    = m_Config.GetInteger("WindowedWidth",	1280);
+	m_DeviceParams.m_WindowedHeight   = m_Config.GetInteger("WindowedHeight",	720);
 	m_DeviceParams.m_MSAA = 1;// m_Config.GetInteger("MSAA", 4);
 	m_DeviceParams.m_Fullscreen = m_Config.GetBool("Fullscreen", false);
 	m_DeviceParams.m_VSync      = m_Config.GetBool("VSync",      false);
@@ -240,7 +240,6 @@ void DemoApp::Update()
 
 	if (m_HasInputFocus)
 	{
-		Controls();
 		UpdateCamera();
 	}
 }
@@ -256,48 +255,16 @@ void DemoApp::ResetCamera()
 	m_CamPos = float3(0.0f, 0.0f, 0.0f);
 	m_CamDir = float3(0.0f, 0.0f, 0.0f);
 
-	m_AngleX = 0.0f;
-	m_AngleY = 0.0f;
+	m_Jaw = 0.0f;
+	m_Pitch = 0.0f;
 }
 
 void DemoApp::UpdateCamera()
 {
-	m_CamPos += m_CamSpeed * m_Timer.GetFrameTime() * m_CamDir;
+	//m_CamPos += m_CamSpeed * m_Timer.GetFrameTime() * m_CamDir;
 }
 
-void DemoApp::Controls()
-{
-	// Compute directional vectors from euler angles
-	float cosX = cosf(m_AngleY);
-	float sinX = sinf(m_AngleY);
-	float cosY = cosf(m_AngleX);
-	float sinY = sinf(m_AngleX);
 
-	float3 dx(cosY, 0, sinY);
-	float3 dy(-sinX * sinY,  cosX, sinX * cosY);
-	float3 dz(-cosX * sinY, -sinX, cosX * cosY);
-
-	m_CamDir = float3(0, 0, 0);
-
-	if (m_Keys[VK_LEFT] || m_Keys['A'])
-		m_CamDir -= dx;
-	if (m_Keys[VK_RIGHT] || m_Keys['D'])
-		m_CamDir += dx;
-	if (m_Keys[VK_SHIFT])
-		m_CamDir -= dy;
-	if (m_Keys[VK_CONTROL])
-		m_CamDir += dy;
-	if (m_Keys[VK_DOWN] || m_Keys['S'])
-		m_CamDir -= dz;
-	if (m_Keys[VK_UP] || m_Keys['W'])
-		m_CamDir += dz;
-
-	float d = dot(m_CamDir, m_CamDir);
-	if (d > 0.0f)
-	{
-		m_CamDir *= rsqrtf(d);
-	}
-}
 
 void DemoApp::MakeFrame()
 {
@@ -431,7 +398,7 @@ void DemoApp::DrawGUI(Context context, uint buffer_index, const SProfileData* pr
 			char str[64];
 			int len = sprintf(str, "%.3f, %.3f, %.3f", m_CamPos.x, m_CamPos.y, m_CamPos.z);
 			m_Font.DrawText(context, 200, 10, 20.0f, 20.0f, str, len);
-			len = sprintf(str, "%.3f, %.3f", m_AngleX, m_AngleY);
+			len = sprintf(str, "%.3f, %.3f", m_Jaw, m_Pitch);
 			m_Font.DrawText(context, 200, 32, 20.0f, 20.0f, str, len);
 		}
 #endif
@@ -630,10 +597,10 @@ void DemoApp::UpdateMouse(const int dx, const int dy)
 {
 	if (m_CapturedMouse)
 	{
-		m_AngleX -= m_MouseSensibility * dx;
-		m_AngleY += m_MouseSensibility * (m_InvertMouse? -dy : dy);
+		m_Jaw += m_MouseSensibility * dx;
+		m_Pitch -= m_MouseSensibility * (m_InvertMouse? -dy : dy);
 
-		m_AngleY = clamp(m_AngleY, -1.57f, 1.57f);
+		m_Pitch = clamp(m_Pitch, -1.57f, 1.57f);
 	}
 }
 

@@ -28,18 +28,9 @@ using namespace Dae;
 #include <vector>
 class Camera
 {
-	float4x4 mtx;
-	vec3 m_angle = {}, m_pos = {};
-	void update()
-	{
-		mtx.identity();
-		mtx = mul(mtx, RotateX(m_angle.x));
-		mtx = mul(mtx, RotateY(m_angle.y));
-		mtx = mul(mtx, RotateZ(m_angle.z));
-		mtx = mul(translate(m_pos), mtx);//TRS for column-order
-		mtx = inverse(mtx);
-	}public:
-		Camera() { mtx.identity(); }
+	float4x4 m_toViewSpace, m_toWorldSpace;
+public:
+		Camera() { m_toViewSpace.identity(); m_toWorldSpace.identity(); }
 		float4x4 lookat(vec3 eye, vec3 center, vec3 up)
 		{
 			vec3 const zaxis(normalize(center - eye));
@@ -63,23 +54,14 @@ class Camera
 			T(2, 3) = -eye.z;
 			//for column-major TRS
 			//(T*R*S)^(-1) = ((S)^(-1))*((R)^(-1))*((T)^(-1))
-			mtx = mul(R, T);
-			return mtx;
-		}
-		float4x4 SetRot(vec3 angles)
-		{
-			m_angle = angles;
-			update();
-			return mtx;
-		}
-		float4x4 SetPos(vec3 pos)
-		{
-			m_pos = pos;
-			update();
-			return mtx;
+			m_toViewSpace = mul(R, T);
+			m_toWorldSpace = inverse(m_toViewSpace);
+			return m_toViewSpace;
 		}
 
-		float4x4 get() { return mtx; }
+		float4x4 GetViewTransform()const { return m_toViewSpace; }
+		float4x4 GetViewTransformInverse()const { return m_toWorldSpace; }
+
 };
 class ShadowMapCascade
 {
@@ -93,7 +75,8 @@ public:
 	void SetMatrix(Context context, const float4x4 &matrix);
 	//RootSignature GetRootSignature() const { return m_RootSig; }
 	void Draw(Context context);
-	void SetCamera( vec3 pos, vec3 rot);
+	void SetCameraLookAt(vec3 eye, vec3 target,vec3 up);
+	Camera const& GetCamera() { return m_Camera; }
 
 private:
 	Dae::VertexLayout vertexLayout = Dae::VertexLayout({

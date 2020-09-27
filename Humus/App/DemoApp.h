@@ -71,8 +71,6 @@ public:
 
 	virtual void ResetCamera();
 	virtual void UpdateCamera();
-	void Controls();
-
 	void MakeFrame();
 
 	virtual bool OnKey(const uint key, const bool pressed);
@@ -120,8 +118,8 @@ protected:
 	float3 m_CamPos;
 	float3 m_CamDir;
 	float  m_CamSpeed;
-	float m_AngleX;
-	float m_AngleY;
+	float m_Jaw;
+	float m_Pitch;
 
 	bool m_Keys[256];
 	bool m_HasInputFocus;

@@ -101,16 +101,44 @@ public:
 	}
 	void UpdateCamera()
 	{
-		DemoApp::UpdateCamera();
-		m_Shadows.SetCamera(m_CamPos, vec3(m_AngleX, m_AngleY, 0));
+		float delta =  m_Timer.GetFrameTime()* m_CamSpeed;
+		
+		/*if (m_Keys[VK_LEFT] || m_Keys['A'])
+			m_Jaw -=  delta;
+		if (m_Keys[VK_RIGHT] || m_Keys['D'])
+			m_Jaw +=  delta;
+
+		if (m_Keys[VK_DOWN] || m_Keys['S'])
+			m_Pitch -= delta;
+		if (m_Keys[VK_UP] || m_Keys['W'])
+			m_Pitch += delta;
+			*/
+		// assume initial dir be (0,0,1); 
+		// calculate new y projecting new dir to y sin(pitch) where pitch - elevation above zx;
+		// calculate new x & z from zx projection using jaw as angle from initial to positive x
+		m_CamDir.x = sin(m_Jaw) * cos(m_Pitch);
+		m_CamDir.y = sin(m_Pitch);
+		m_CamDir.z = cos(m_Jaw) * cos(m_Pitch);
+		
+		vec3 aside = cross(m_CamDir, vec3(0, 1, 0));
+		if (m_Keys[VK_LEFT] || m_Keys['A'])
+			m_CamPos += aside *  delta;
+		if (m_Keys[VK_RIGHT] || m_Keys['D'])
+			m_CamPos -= aside * delta;
+
+		if (m_Keys[VK_DOWN] || m_Keys['S'])
+			m_CamPos -= m_CamDir * delta;
+		if (m_Keys[VK_UP] || m_Keys['W'])
+			m_CamPos += m_CamDir * delta;
+		
+		m_Shadows.SetCameraLookAt(m_CamPos, m_CamPos + m_CamDir, vec3(0,1,0));
 	}
 	virtual void ResetCamera()
 	{
-		m_CamPos = float3(0.0f, 5.0f, 0.0f);
-		m_CamDir = float3(0.0f, 0.0f, 0.0f);
+		m_CamPos = float3(0, 1.14f, -2.25f);
 
-		m_AngleX = PI/2;
-		m_AngleY = 0;
+		m_Jaw = 0;
+		m_Pitch = 0;
 	}
 
 	void DrawFrame(Context context, uint buffer_index)

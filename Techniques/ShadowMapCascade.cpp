@@ -63,12 +63,12 @@ void ShadowMapCascade::SimpleObjectInstance::Draw(Context context)
 	SetVertexSetup(context, m_Object.m_Model.GetVertexSetup());
 	DrawIndexed(context, 0, m_Object.m_Model.indexCount);
 }
-void ShadowMapCascade::SetCamera(vec3 pos, vec3 rot)
+void ShadowMapCascade::SetCameraLookAt(vec3 eye, vec3 target, vec3 up)
 {
-	m_Camera.SetPos(pos);
-	m_Camera.SetRot(rot);
-	m_viewMatrix = m_Camera.get();
+	m_Camera.lookat(eye, target, up);
+	m_viewMatrix = m_Camera.GetViewTransform();
 }
+
 bool ShadowMapCascade::CreateResources(Device device, RenderPass pass)
 {
 	if ((m_RootSig = CreateRootSignature(device, NShadowMapCascade::RootSig)) == nullptr) return false;
@@ -80,7 +80,7 @@ bool ShadowMapCascade::CreateResources(Device device, RenderPass pass)
 	m_ObjectInstances.resize(11);
 	m_ObjectInstances[0] = new SimpleObjectInstance(m_Objects[0], device, m_RootSig, mtx);
 	const std::vector<vec3> positions = {
-	vec3(0.0f, 1.0f, 0.0f),
+	vec3(0.0f, 0.0f, 0.0f),
 	vec3(1.25f, 0.25f, 1.25f),
 	vec3(-1.25f, -0.2f, 1.25f),
 	vec3(1.25f, 0.1f, -1.25f),
@@ -131,7 +131,7 @@ bool ShadowMapCascade::CreateResources(Device device, RenderPass pass)
 	SBufferParams cb_params = { sizeof(SPerFrame), HeapType::HEAP_DEFAULT, Usage::CONSTANT_BUFFER, "" };
 	m_FrameCB = CreateBuffer(device, cb_params);
 	vec3 lightPos = { -6.18, -20, -19 };
-	m_projMatrix = PerspectiveMatrix(PI / 4, 600.0f / 800.0f, 0.001, 100);
+	m_projMatrix = PerspectiveMatrix(PI / 4, 720.0f / 1280.0f, 0.001, 100);
 	lightDir = normalize(lightPos);
 
 	SResourceDesc constants[] = { m_FrameCB };
