@@ -1268,7 +1268,7 @@ ResourceTable CreateResourceTable(Device device, RootSignature root, uint32 slot
 					view_info.pNext = VK_NULL_HANDLE;
 					view_info.format = g_Formats[texture->m_Format];
 					view_info.components = { VK_COMPONENT_SWIZZLE_R, VK_COMPONENT_SWIZZLE_G, VK_COMPONENT_SWIZZLE_B, VK_COMPONENT_SWIZZLE_A };
-					view_info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+					view_info.subresourceRange.aspectMask = IsDepthFormat(texture->m_Format)? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT;
 					view_info.subresourceRange.baseMipLevel = 0;
 					view_info.subresourceRange.levelCount = texture->m_MipLevels;
 					view_info.subresourceRange.baseArrayLayer = 0;
@@ -1399,7 +1399,8 @@ SamplerTable CreateSamplerTable(Device device, RootSignature root, uint32 slot, 
 		sampler_info.anisotropyEnable = (sampler_desc.Aniso > 1);
 		sampler_info.maxAnisotropy = (float) sampler_desc.Aniso;
 		sampler_info.maxLod = (sampler_desc.Filter > FILTER_LINEAR)? FLT_MAX : 0.0f;
-
+		sampler_info.compareEnable = sampler_desc.Comparison != EComparisonFunc::ALWAYS;
+		sampler_info.compareOp = (VkCompareOp)sampler_desc.Comparison;
 		VkSampler sampler = VK_NULL_HANDLE;
 		res = vkCreateSampler(device->m_Device, &sampler_info, VK_NULL_HANDLE, &sampler);
 		ASSERT(res == VK_SUCCESS);
@@ -1467,7 +1468,7 @@ RenderPass CreateRenderPass(Device device, ImageFormat color_format, ImageFormat
 		attachment.format = g_Formats[depth_format];
 		attachment.samples = VkSampleCountFlagBits(msaa_samples);
 		attachment.loadOp = (flags & CLEAR_DEPTH)? VK_ATTACHMENT_LOAD_OP_CLEAR : VK_ATTACHMENT_LOAD_OP_LOAD;
-		attachment.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+		attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
 		attachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
 		attachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
 		attachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
@@ -1491,7 +1492,7 @@ RenderPass CreateRenderPass(Device device, ImageFormat color_format, ImageFormat
 
 	VkSubpassDescription subpass_desc = {};
 	subpass_desc.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
-	subpass_desc.colorAttachmentCount = 1;
+	subpass_desc.colorAttachmentCount = color_format?1:0;
 	subpass_desc.pColorAttachments = color_format? &color_reference : VK_NULL_HANDLE;
 	subpass_desc.pDepthStencilAttachment = depth_format? &depth_reference : VK_NULL_HANDLE;
 	subpass_desc.pResolveAttachments = (msaa_samples > 1)? &resolve_reference : VK_NULL_HANDLE;
@@ -1549,7 +1550,7 @@ void DestroyRenderPass(Device device, RenderPass& render_pass)
 }
 
 
-RenderSetup CreateRenderSetup(Device device, RenderPass render_pass, Texture* color_targets, uint color_target_count, Texture depth_target, Texture resolve_target)
+RenderSetup CreateRenderSetup(Device device, RenderPass render_pass, Texture* color_targets, uint color_target_count, Texture depth_target, Texture resolve_target, uint depth_slice)
 {
 	VkImageView attachments[3];
 	uint attachment_count = 0;
@@ -1580,15 +1581,15 @@ RenderSetup CreateRenderSetup(Device device, RenderPass render_pass, Texture* co
 		VkImageViewCreateInfo view_create_info = {};
 		view_create_info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
 		view_create_info.image = depth_target->m_Image;
-		view_create_info.viewType = g_TextureTypes[color_targets[0]->m_Type];
+		view_create_info.viewType = g_TextureTypes[depth_target->m_Type];
 		view_create_info.format = g_Formats[depth_target->m_Format];
 		view_create_info.components = { VK_COMPONENT_SWIZZLE_R, VK_COMPONENT_SWIZZLE_G, VK_COMPONENT_SWIZZLE_B, VK_COMPONENT_SWIZZLE_A };
 		view_create_info.subresourceRange = {};
 		view_create_info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;// | VK_IMAGE_ASPECT_STENCIL_BIT;
 		view_create_info.subresourceRange.baseMipLevel = 0;
 		view_create_info.subresourceRange.levelCount = 1;
-		view_create_info.subresourceRange.baseArrayLayer = 0;
-		view_create_info.subresourceRange.layerCount = 1;
+		view_create_info.subresourceRange.baseArrayLayer = depth_slice;
+		view_create_info.subresourceRange.layerCount = depth_target->m_Slices;
 
 		VkImageView depth_view = VK_NULL_HANDLE;
 		VkResult res = vkCreateImageView(device->m_Device, &view_create_info, VK_NULL_HANDLE, &depth_view);
@@ -1618,12 +1619,8 @@ RenderSetup CreateRenderSetup(Device device, RenderPass render_pass, Texture* co
 		attachments[attachment_count++] = resolve_view;
 	}
 
-
-
-
-
-	uint32 width  = color_targets[0]->m_Width;
-	uint32 height = color_targets[0]->m_Height;
+	uint32 width  = color_targets?color_targets[0]->m_Width:depth_target->m_Width;
+	uint32 height = color_targets?color_targets[0]->m_Height:depth_target->m_Height;
 
 
 	VkFramebufferCreateInfo framebuffer_create_info = {};

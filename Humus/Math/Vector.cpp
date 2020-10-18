@@ -1277,6 +1277,15 @@ half4::half4(const float4 &v)
 	_mm_storel_pi((__m64 *) &x, _mm_castsi128_ps(reg0));
 }
 
+float4x4 ProjectiveMatrix(const float w, const float h, const float z_near, const float z_far)
+{
+	return float4x4(
+		2.0f/w, 0, 0, 0,
+		0, 2.0f/h, 0, 0,
+		0, 0, 1 / (z_far - z_near), z_near / (z_near - z_far),
+		0, 0, 0, 1);
+}
+
 float4x4 PerspectiveMatrix(const float fov, const float ratio, const float z_near, const float z_far)
 {
 	const float f = 0.5f * fov;

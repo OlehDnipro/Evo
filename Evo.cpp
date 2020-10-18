@@ -39,11 +39,12 @@
 #include <stdio.h>
 class EvoApp : public DemoApp
 {
-	Texture m_ColorBuffer;
+	Texture m_ColorBuffer, m_ShadowMap;
 	Texture m_DepthBuffer;
 
-	RenderPass m_RenderPass;
+	RenderPass m_RenderPassMain, m_RenderPassShadow;
 	RenderSetup m_RenderSetup[BUFFER_FRAMES];
+	RenderSetup m_ShadowSetup[SHADOW_MAP_CASCADE_COUNT];
 	ShadowMapCascade m_Shadows;
 public:
     EvoApp() :DemoApp()
@@ -53,12 +54,12 @@ public:
 	bool Init()
 	{
 		CreateRenderSetups();
-		m_Shadows.CreateResources(m_Device, m_RenderPass);
+		m_Shadows.CreateResources(m_Device, m_ShadowMap);
 		return true;
 	}
 	void CreateRenderSetups()
 	{
-		m_RenderPass = CreateRenderPass(m_Device, GetBackBufferFormat(m_Device), IMGFMT_D16, CLEAR_COLOR | CLEAR_DEPTH, m_DeviceParams.m_MSAA);
+		m_RenderPassMain = CreateRenderPass(m_Device, GetBackBufferFormat(m_Device), IMGFMT_D16, CLEAR_COLOR | CLEAR_DEPTH, m_DeviceParams.m_MSAA);
 
 		const bool use_msaa = (m_DeviceParams.m_MSAA > 1);
 		if (use_msaa)
@@ -87,7 +88,24 @@ public:
 		for (uint i = 0; i < BUFFER_FRAMES; i++)
 		{
 			Texture back_buffer = GetBackBuffer(m_Device, i);
-			m_RenderSetup[i] = CreateRenderSetup(m_Device, m_RenderPass, use_msaa ? &m_ColorBuffer : &back_buffer, 1, m_DepthBuffer, use_msaa ? back_buffer : nullptr);
+			m_RenderSetup[i] = CreateRenderSetup(m_Device, m_RenderPassMain, use_msaa ? &m_ColorBuffer : &back_buffer, 1, m_DepthBuffer, use_msaa ? back_buffer : nullptr);
+		}
+
+
+		STextureParams tb_params;
+		tb_params.m_Type = TextureType::TEX_2D_ARRAY;
+		tb_params.m_Width = 4096;
+		tb_params.m_Height = 4096;
+		tb_params.m_Format = IMGFMT_D16;
+		tb_params.m_MSAASampleCount = 1;
+		tb_params.m_DepthTarget = true;
+		tb_params.m_Slices = SHADOW_MAP_CASCADE_COUNT;
+		m_ShadowMap = CreateTexture(m_Device, tb_params);
+
+		m_RenderPassShadow = CreateRenderPass(m_Device, IMGFMT_INVALID, IMGFMT_D16, CLEAR_DEPTH, 0);
+		for (int i = 0; i < SHADOW_MAP_CASCADE_COUNT; i++)
+		{
+			m_ShadowSetup[i] = CreateRenderSetup(m_Device, m_RenderPassShadow, nullptr, 0, m_ShadowMap, nullptr, i);
 		}
 	}
 	void DestroyRenderSetups()
@@ -96,8 +114,11 @@ public:
 			DestroyRenderSetup(m_Device, m_RenderSetup[i]);
 
 		DestroyTexture(m_Device, m_DepthBuffer);
+		DestroyTexture(m_Device, m_ShadowMap);
 
-		DestroyRenderPass(m_Device, m_RenderPass);
+		DestroyRenderPass(m_Device, m_RenderPassMain);
+		DestroyRenderPass(m_Device, m_RenderPassShadow);
+
 	}
 	void UpdateCamera()
 	{
@@ -143,9 +164,19 @@ public:
 
 	void DrawFrame(Context context, uint buffer_index)
 	{
-		BeginRenderPass(context, "Backbuffer", m_RenderPass, m_RenderSetup[buffer_index], float4(0, 0, 0, 0));
+		for (int i = 0; i < SHADOW_MAP_CASCADE_COUNT; i++)
+		{
+			BeginRenderPass(context, "Shadow", m_RenderPassShadow, m_ShadowSetup[i], float4(0, 0, 0, 0));
+			m_Shadows.Update(context, i);
+			m_Shadows.PrepareDraw(m_Device, m_RenderPassShadow, ShadowMapCascade::ShadowPass);
+			m_Shadows.Draw(context);
+			EndRenderPass(context, m_ShadowSetup[i]);
+		}
+		BeginRenderPass(context, "Backbuffer", m_RenderPassMain, m_RenderSetup[buffer_index], float4(0, 0, 0, 0));
+		m_Shadows.Update(context);
+		m_Shadows.PrepareDraw(m_Device, m_RenderPassMain, ShadowMapCascade::MainPass);
 		m_Shadows.Draw(context);
-		EndRenderPass(context, GetBackBufferSetup(m_Device, buffer_index));
+		EndRenderPass(context, m_RenderSetup[buffer_index]);
 	};
 };
 static DemoApp *app = nullptr; // Should come up with something prettier than this

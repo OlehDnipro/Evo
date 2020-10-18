@@ -1074,7 +1074,7 @@ bool PatcResource(spirv_cross::Compiler const* comp,spirv_cross::Resource const&
 	output[descSet_offset] = binding->second.first;// now samplers - table 0, others - table 1
 	return true;
 }
-
+ 
 bool Patch( uint32_t* output, size_t size, std::map<std::string, std::pair<uint32_t, uint32_t>> const& bindings)
 {
 	spirv_cross::Compiler comp_src((uint32_t*)output, size / sizeof(uint32_t));

@@ -485,7 +485,7 @@ struct half4
 
 float4x4 PerspectiveMatrix(const float fov, const float ratio, const float z_near, const float z_far);
 float4x4 PerspectiveMatrixInverse(const float fov, const float ratio, const float z_near, const float z_far);
-
+float4x4 ProjectiveMatrix(const float w, const float h, const float z_near, const float z_far);
 float4x4 RotateX(const float angle);
 float4x4 RotateY(const float angle);
 float4x4 RotateZ(const float angle);

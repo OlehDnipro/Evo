@@ -26,11 +26,33 @@
 #include "../Humus/Util/ModelDae.h"
 using namespace Dae;
 #include <vector>
+#define SHADOW_MAP_CASCADE_COUNT 4
 class Camera
 {
 	float4x4 m_toViewSpace, m_toWorldSpace;
+	float4x4 m_Project, m_ProjectInverse;
+	float m_farPlane, m_nearPlane;
 public:
 		Camera() { m_toViewSpace.identity(); m_toWorldSpace.identity(); }
+		
+		float4x4 ProjectPerspective(const float fov, const float ratio, const float z_near, const float z_far) 
+		{
+			m_nearPlane = z_near;
+			m_farPlane = z_far; 
+			m_Project = PerspectiveMatrix(fov, ratio, z_near, z_far);
+			m_ProjectInverse = inverse(m_Project);
+			return m_Project;
+		}
+
+		float4x4 ProjectOrtho(const float w, const float h, const float z_near, const float z_far) 
+		{
+			m_nearPlane = z_near;
+			m_farPlane = z_far;
+			m_Project = ProjectiveMatrix(w, h, z_near, z_far);
+			m_ProjectInverse = inverse(m_Project);
+			return m_Project;
+		}
+
 		float4x4 lookat(vec3 eye, vec3 center, vec3 up)
 		{
 			vec3 const zaxis(normalize(center - eye));
@@ -60,23 +82,35 @@ public:
 		}
 
 		float4x4 GetViewTransform()const { return m_toViewSpace; }
-		float4x4 GetViewTransformInverse()const { return m_toWorldSpace; }
+		float4x4 GetViewTransformInverse()const { return m_Project; }
+		float4x4 GetProjectionInverse()const { return m_ProjectInverse; }
+		float GetFarPlane() { return m_farPlane; }
+		float GetNearPlane() { return m_nearPlane; }
 
 };
 class ShadowMapCascade
 {
 public:
+
 	ShadowMapCascade();
 	~ShadowMapCascade();
-
-	bool CreateResources(Device device, RenderPass pass);
+	enum PassEnum
+	{
+		ShadowPass,
+		MainPass,
+		Count
+	};
+	bool CreateResources(Device device, Texture shadowMap);
 	void DestroyResources(Device device);
 
 	void SetMatrix(Context context, const float4x4 &matrix);
 	//RootSignature GetRootSignature() const { return m_RootSig; }
 	void Draw(Context context);
+	void Update(Context context, int cascade = -1);
+	void PrepareDraw(Device device, RenderPass pass, PassEnum passId);
 	void SetCameraLookAt(vec3 eye, vec3 target,vec3 up);
 	Camera const& GetCamera() { return m_Camera; }
+
 
 private:
 	Dae::VertexLayout vertexLayout = Dae::VertexLayout({
@@ -89,7 +123,10 @@ private:
 	{
 		float4x4 projection;
 		float4x4 view;
+		float4x4 lightViewProjection[SHADOW_MAP_CASCADE_COUNT];
+		float4 cascadePlanes;
 		float3 lightDir;
+		double pad;
 	};
 	struct SPerModel
 	{
@@ -119,13 +156,14 @@ private:
 	std::vector<SimpleObject> m_Objects;
 	std::vector<SimpleObjectInstance*> m_ObjectInstances;
 	RootSignature m_RootSig;
-	Pipeline m_Pipeline;
+	Pipeline m_Pipeline[PassEnum::Count];
+	PassEnum m_currentPass;
 
-	float4x4 m_viewMatrix, m_projMatrix;
-	float3 lightDir;
+	SPerFrame m_perFrame;
 	Buffer m_FrameCB;
+	Texture m_defTexture, m_ShadowMap;
 	ResourceTable m_FrameConstantTable;
-
+	ResourceTable m_FrameResourcesMain, m_FrameResourcesSM;
 	SamplerTable m_SamplerTable;
 	
 };

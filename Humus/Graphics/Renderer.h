@@ -338,6 +338,7 @@ struct SSamplerDesc
 	AddressMode   AddressModeU;
 	AddressMode   AddressModeV;
 	AddressMode   AddressModeW;
+	EComparisonFunc Comparison;
 };
 no_inline SamplerTable CreateSamplerTable(Device device, RootSignature root, uint32 slot, const SSamplerDesc* sampler_descs, uint count);
 template<int N> force_inline SamplerTable CreateSamplerTable(Device device, RootSignature root, uint32 slot, const SSamplerDesc(&samplers)[N]) { return CreateSamplerTable(device, root, slot, samplers, N); }
@@ -354,7 +355,7 @@ inline RenderPassFlags operator | (RenderPassFlags a, RenderPassFlags b) { retur
 RenderPass CreateRenderPass(Device device, ImageFormat color_format, ImageFormat depth_format, RenderPassFlags flags, uint msaa_samples = 1);
 void DestroyRenderPass(Device device, RenderPass& render_pass);
 
-RenderSetup CreateRenderSetup(Device device, RenderPass render_pass, Texture* color_targets, uint color_target_count, Texture depth_target = nullptr, Texture resolve_target = nullptr);
+RenderSetup CreateRenderSetup(Device device, RenderPass render_pass, Texture* color_targets, uint color_target_count, Texture depth_target = nullptr, Texture resolve_target = nullptr, uint depth_slice = 0);
 void DestroyRenderSetup(Device device, RenderSetup& setup);
 
 struct SCodeBlob
