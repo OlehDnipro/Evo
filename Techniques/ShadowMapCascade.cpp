@@ -250,20 +250,11 @@ void ShadowMapCascade::Update(Context  context, int cascade)
 		float4x4 mat; mat.identity();
 		localperFrame.projection = mat;
 		localperFrame.view = m_ShadowProvider.Get().lightViewProjection[cascade];
-		m_ShadowViewportProvider[cascade].m_Const.Flush(GetDevice(context));
-
 		m_ViewportProvider.Get() = localperFrame;
 	}
 	else
 	{
 		m_ViewportProvider.Get() = m_perFrame;
-	}
-
-	m_ViewportProvider.m_Const.Flush(GetDevice(context));
-	m_ShadowProvider.m_Const.Flush(GetDevice(context));
-	for (int i = 0; i < 11; i++)
-	{
-		m_ObjectInstances[i]->Flush(GetDevice(context));
 	}
 
 	/*SPerFrame localperFrame = m_perFrame;
@@ -342,8 +333,12 @@ void ShadowMapCascade::GatherParameters(IParameterProvider** providers, uint cou
 
 				case STRUCTUREDBUFFER:
 				case RWSTRUCTUREDBUFFER:
-				case CBV:
 					write = *(Buffer*)(providers[i]->GetBaseParameterPointer() + param.m_provMemOffset);
+				case CBV:
+					SConstantData& constants = *(SConstantData*)(providers[i]->GetBaseParameterPointer() + param.m_provMemOffset);
+					write = constants.buffer;
+					write.m_Desc.bView.offset = constants.offset;
+					write.m_Desc.bView.size = constants.size;
 
 				}
 			}

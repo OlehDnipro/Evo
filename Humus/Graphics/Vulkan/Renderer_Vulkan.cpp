@@ -33,13 +33,15 @@
 #define USE_DEBUG_MARKERS
 #define USE_DEBUG_UTILS
 #endif
-
+struct SlicedBuffer
+{
+	Buffer	m_Buffer;
+	uint8*  m_Data;
+	uint    m_Cursor;
+};
 struct SCommandListAllocator
 {
-	Buffer	m_UploadBuffer;
-	uint8*  m_Data;
-	uint    m_Offset;
-
+	SlicedBuffer m_Staging;
 	VkQueryPool m_QueryPool;
 	Buffer	    m_QueryBuffer;
 	uint        m_QueryOffset;
@@ -51,10 +53,9 @@ struct SCommandListAllocator
 	void Begin(Device device, uint size);
 	void End(Device device);
 
-	uint32 AllocateUploadBuffer(Device device, uint size, uint alignment);
-	uint32 AllocateConstantBuffer(uint size, uint alignment);
-
 };
+uint32 AllocateBufferSlice(Device device, SlicedBuffer& buffer, uint size, uint alignment);
+
 static VkDebugUtilsMessengerEXT debugMessenger = VK_NULL_HANDLE;
 static VKAPI_ATTR VkBool32 VKAPI_CALL VulkanCallback(VkDebugUtilsMessageSeverityFlagBitsEXT        messageSeverityBit,
 	VkDebugUtilsMessageTypeFlagsEXT               messageTypeBit,
@@ -85,7 +86,7 @@ struct SDevice
 
 	VkCommandPool m_CommandPool;
 	VkCommandBuffer m_CommandBuffers[BUFFER_FRAMES];
-	VkDescriptorSetLayout m_UBOLayout;
+	SlicedBuffer m_Constants;
 
 	VkDescriptorPool m_DescriptorPool;
 
@@ -114,7 +115,6 @@ struct SContext
 {
 	VkCommandBuffer m_CommandBuffer;
 	RootSignature m_CurrRootSignature;
-
 	SCommandListAllocator* m_Allocator;
 	Device m_Device;
 
@@ -293,7 +293,6 @@ struct SVertexSetup
 struct SBuffer
 {
 	VkBuffer m_Buffer;
-	VkDescriptorSet m_DescriptorSet;
 	uint     m_Size;
 	HeapType m_HeapType;
 	VkDeviceMemory m_Memory;
@@ -864,20 +863,6 @@ Device CreateDevice(DeviceParams& params)
 	memcpy(device->m_DisplayModes.GetArray(), modes.GetArray(), modes.GetCount() * sizeof(DisplayMode));
 
 
-	VkDescriptorSetLayoutBinding ubo_binding = {};
-	ubo_binding.binding = 0;
-	ubo_binding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
-	ubo_binding.descriptorCount = 1;
-	ubo_binding.stageFlags = VK_SHADER_STAGE_ALL;//VK_SHADER_STAGE_ALL_GRAPHICS;
-
-	VkDescriptorSetLayoutCreateInfo ubo_layout_info = {};
-	ubo_layout_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-	ubo_layout_info.bindingCount = 1;
-	ubo_layout_info.pBindings = &ubo_binding;
-
-	res = vkCreateDescriptorSetLayout(device->m_Device, &ubo_layout_info, VK_NULL_HANDLE, &device->m_UBOLayout);
-	ASSERT(res == VK_SUCCESS);
-
 
 	VkDescriptorPoolSize pool_sizes[] =
 	{
@@ -911,6 +896,14 @@ Device CreateDevice(DeviceParams& params)
 
 	device->m_DefaultBlendState = CreateBlendState(device, BF_ONE, BF_ZERO, BM_ADD, 0xF, false);
 
+
+	SBufferParams cb(1024*1024, HEAP_UPLOAD, CONSTANT_BUFFER, "ConstantBuffer");
+	device->m_Constants.m_Buffer = CreateBuffer(device, cb);	
+
+	device->m_Constants.m_Cursor = 0;
+	device->m_Constants.m_Data = VK_NULL_HANDLE;
+	vkMapMemory(device->m_Device, device->m_Constants.m_Buffer->m_Memory, 0, device->m_Constants.m_Buffer->m_Size, 0, (void**)&device->m_Constants.m_Data);
+
 	return device;
 }
 
@@ -926,8 +919,6 @@ void DestroyDevice(Device& device)
 	}
 #endif
 	DestroyBlendState(device, device->m_DefaultBlendState);
-
-	vkDestroyDescriptorSetLayout(device->m_Device, device->m_UBOLayout, VK_NULL_HANDLE);
 
 	vkDestroyDescriptorPool(device->m_Device, device->m_DescriptorPool, VK_NULL_HANDLE);
 
@@ -1311,6 +1302,8 @@ void UpdateResourceTable(Device device, RootSignature root, uint32 slot, Resourc
 			descriptor_write.pBufferInfo = &buffer_info;
 
 			buffer_info.buffer = buffer->m_Buffer;
+			buffer_info.offset = resources[i].m_Desc.bView.offset;
+			buffer_info.range = resources[i].m_Desc.bView.size;
 			break;
 		}
 		default:
@@ -2305,54 +2298,49 @@ void SCommandListAllocator::Destroy(Device device)
 {
 	vkDestroyQueryPool(device->m_Device, m_QueryPool, VK_NULL_HANDLE);
 	DestroyBuffer(device, m_QueryBuffer);
-	DestroyBuffer(device, m_UploadBuffer);
+	DestroyBuffer(device, m_Staging.m_Buffer);
 }
 
 void SCommandListAllocator::Begin(Device device, uint size)
 {
-	uint curr_size = m_UploadBuffer? m_UploadBuffer->m_Size : 0;
+	uint curr_size = m_Staging.m_Buffer ? m_Staging.m_Buffer->m_Size : 0;
 	if (size != curr_size)
 	{
-		if (m_UploadBuffer)
-			DestroyBuffer(device, m_UploadBuffer);
-
 		SBufferParams params(size, HEAP_UPLOAD, VERTEX_BUFFER | INDEX_BUFFER | CONSTANT_BUFFER, "UploadBuffer");
-		m_UploadBuffer = CreateBuffer(device, params);
-
-		CreateUniformBufferDescriptorSet(device, m_UploadBuffer->m_Buffer, 4 * 1024, &device->m_UBOLayout, m_UploadBuffer->m_DescriptorSet);
+		m_Staging.m_Buffer = CreateBuffer(device, params);
 	}
 
-	m_Offset = 0;
-	m_Data = VK_NULL_HANDLE;
+	m_Staging.m_Cursor = 0;
+	m_Staging.m_Data = VK_NULL_HANDLE;
 
 	m_QueryOffset = 0;
 }
 
 void SCommandListAllocator::End(Device device)
 {
-	if (m_Data)
+	if (m_Staging.m_Data)
 	{
-		vkUnmapMemory(device->m_Device, m_UploadBuffer->m_Memory);
+		vkUnmapMemory(device->m_Device, m_Staging.m_Buffer->m_Memory);
 	}
 }
 
 
-uint32 SCommandListAllocator::AllocateUploadBuffer(Device device, uint size, uint alignment)
+uint32 AllocateBufferSlice(Device device, SlicedBuffer& buffer, uint size, uint alignment)
 {
-	uint aligned_offset = (m_Offset + alignment - 1) & ~(alignment - 1);
+	uint aligned_offset = (buffer.m_Cursor + alignment - 1) & ~(alignment - 1);
 
-	if (aligned_offset + size > m_UploadBuffer->m_Size)
+	if (aligned_offset + size > buffer.m_Buffer->m_Size)
 	{
 		// Reallocate
 		ASSERT(false);
 	}
 
-	if (m_Data == VK_NULL_HANDLE)
+	if (buffer.m_Data == VK_NULL_HANDLE)
 	{
-		vkMapMemory(device->m_Device, m_UploadBuffer->m_Memory, 0, m_UploadBuffer->m_Size, 0, (void**) &m_Data);
+		vkMapMemory(device->m_Device, buffer.m_Buffer->m_Memory, 0, buffer.m_Buffer->m_Size, 0, (void**) &buffer.m_Data);
 	}
 
-	m_Offset = aligned_offset + size;
+	buffer.m_Cursor = aligned_offset + size;
 
 	return aligned_offset;
 }
@@ -2523,8 +2511,8 @@ uint8* MapBuffer(const SMapBufferParams& params)
 	{
 		SCommandListAllocator* allocator = params.m_Context->m_Allocator;
 
-		uint offset = allocator->AllocateUploadBuffer(params.m_Device, params.m_Size, 16);
-		data = allocator->m_Data + offset;
+		uint offset = AllocateBufferSlice(params.m_Device, allocator->m_Staging, params.m_Size, 16);
+		data = allocator->m_Staging.m_Data + offset;
 
 		params.m_InternalOffset = offset;
 	}
@@ -2547,7 +2535,7 @@ void UnmapBuffer(const SMapBufferParams& params)
 		buffer_copy.srcOffset = params.m_InternalOffset;
 		buffer_copy.dstOffset = params.m_Offset;
 		buffer_copy.size = params.m_Size;
-		vkCmdCopyBuffer(context->m_CommandBuffer, context->m_Allocator->m_UploadBuffer->m_Buffer, params.m_Buffer->m_Buffer, 1, &buffer_copy);
+		vkCmdCopyBuffer(context->m_CommandBuffer, context->m_Allocator->m_Staging.m_Buffer->m_Buffer, params.m_Buffer->m_Buffer, 1, &buffer_copy);
 	}
 	else
 	{
@@ -2579,11 +2567,11 @@ void SetTextureData(Context context, Texture texture, uint mip, uint slice, cons
 	uint dst_pitch = Align(pitch, format_size);
 
 	// Grab upload buffer space
-	uint dst_offset = context->m_Allocator->AllocateUploadBuffer(context->m_Device, dst_pitch * rows, format_size);
+	uint dst_offset = AllocateBufferSlice(context->m_Device, context->m_Allocator->m_Staging, dst_pitch * rows, format_size);
 
 	// Copy data in place
 	uint8* src_data = (uint8*) data;
-	uint8* dst_data = context->m_Allocator->m_Data + dst_offset;
+	uint8* dst_data = context->m_Allocator->m_Staging.m_Data + dst_offset;
 	for (uint32 r = 0; r < rows; ++r)
 	{
 		memcpy(dst_data, src_data, src_pitch);
@@ -2618,7 +2606,7 @@ void SetTextureData(Context context, Texture texture, uint mip, uint slice, cons
 	image_copy.imageExtent.depth  = d;
 	image_copy.bufferRowLength = /*blocks number*/(dst_pitch / format_size) * /*pixels per block*/(w / cols)/*=pixel number*/;
 	image_copy.bufferImageHeight = h;
-	vkCmdCopyBufferToImage(context->m_CommandBuffer, context->m_Allocator->m_UploadBuffer->m_Buffer, texture->m_Image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &image_copy);
+	vkCmdCopyBufferToImage(context->m_CommandBuffer, context->m_Allocator->m_Staging.m_Buffer->m_Buffer, texture->m_Image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &image_copy);
 
 
 	barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
@@ -2716,48 +2704,18 @@ uint8* SetVertexBuffer(Context context, uint stream, uint stride, uint count)
 	return VK_NULL_HANDLE;
 }
 
-template<VkPipelineBindPoint BindPoint>
-uint8* SetConstantBuffer(Context context, uint slot, uint size)
+uint32 AllocateConstantsSlice(Device device, uint size)
 {
-	uint32 offset = context->m_Allocator->AllocateUploadBuffer(context->m_Device, size, context->m_Device->m_UniformBufferAlignment);
-
-	uint32 descriptor_set = context->m_CurrRootSignature->m_Slots[slot].m_Offset;
-	vkCmdBindDescriptorSets(context->m_CommandBuffer, BindPoint, context->m_CurrRootSignature->m_PipelineLayout, descriptor_set, 1, &context->m_Allocator->m_UploadBuffer->m_DescriptorSet, 1, &offset);
-
-	return context->m_Allocator->m_Data + offset;
+	uint32 offset = AllocateBufferSlice(device, device->m_Constants, size, device->m_UniformBufferAlignment);
+	return offset;
 }
-
-uint8* SetGraphicsConstantBuffer(Context context, uint slot, uint size)
+Buffer GetConstantBuffer(Device device)
 {
-	return SetConstantBuffer<VK_PIPELINE_BIND_POINT_GRAPHICS>(context, slot, size);
+	return device->m_Constants.m_Buffer;
 }
-
-uint8* SetComputeConstantBuffer(Context context, uint slot, uint size)
+uint8* GetConstantBufferData(Device device, uint32 offset)
 {
-	return SetConstantBuffer<VK_PIPELINE_BIND_POINT_COMPUTE>(context, slot, size);
-}
-
-template<VkPipelineBindPoint BindPoint>
-void SetConstantBuffer(Context context, uint slot, const Buffer buffer)
-{
-	if (buffer->m_DescriptorSet == VK_NULL_HANDLE)
-	{
-		CreateUniformBufferDescriptorSet(context->m_Device, buffer->m_Buffer, buffer->m_Size, &context->m_CurrRootSignature->m_Slots[slot].m_DescriptorSetLayout, buffer->m_DescriptorSet);
-	}
-
-	uint32 offset = 0;
-	uint32 descriptor_set = context->m_CurrRootSignature->m_Slots[slot].m_Offset;
-	vkCmdBindDescriptorSets(context->m_CommandBuffer, BindPoint, context->m_CurrRootSignature->m_PipelineLayout, descriptor_set, 1, &buffer->m_DescriptorSet, 1, &offset);
-}
-
-void SetGraphicsConstantBuffer(Context context, uint slot, const Buffer buffer)
-{
-	SetConstantBuffer<VK_PIPELINE_BIND_POINT_GRAPHICS>(context, slot, buffer);
-}
-
-void SetComputeConstantBuffer(Context context, uint slot, const Buffer buffer)
-{
-	SetConstantBuffer<VK_PIPELINE_BIND_POINT_COMPUTE>(context, slot, buffer);
+	return device->m_Constants.m_Data + offset;
 }
 
 void SetRootConstants(Context context, uint slot, const void* data, uint count)

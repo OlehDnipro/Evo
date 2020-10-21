@@ -326,6 +326,21 @@ struct SResourceDesc
 
 	const void* m_Resource;
 	ResourceType m_Type;
+	struct TextureViewDesc
+	{
+
+	};
+	struct BufferViewDesc
+	{
+		uint offset;
+		uint size;
+	};
+	typedef union
+	{
+		TextureViewDesc tView;
+		BufferViewDesc bView;
+	} ViewDesc;
+	ViewDesc m_Desc = {};
 };
 void UpdateResourceTable(Device device, RootSignature root, uint32 slot, ResourceTable table, const SResourceDesc* resources, uint offset, uint count);
 no_inline ResourceTable CreateResourceTable(Device device, RootSignature root, uint32 slot, const SResourceDesc* resources, uint count);
@@ -562,13 +577,11 @@ void SetPipeline(Context context, const Pipeline pipeline);
 void SetVertexSetup(Context context, const VertexSetup setup);
 
 uint8* SetVertexBuffer(Context context, uint stream, uint stride, uint count);
-/*
-uint8* SetGraphicsConstantBuffer(Context context, uint slot, uint size);
-uint8* SetComputeConstantBuffer(Context context, uint slot, uint size);
 
-void SetGraphicsConstantBuffer(Context context, uint slot, const Buffer buffer);
-void SetComputeConstantBuffer(Context context, uint slot, const Buffer buffer);
-*/
+uint32 AllocateConstantsSlice(Device device,  uint size);
+Buffer GetConstantBuffer(Device device);
+uint8* GetConstantBufferData(Device device, uint32 offset);
+
 void SetRootConstants(Context context, uint slot, const void* data, uint count);
 
 void SetRootTextureBuffer(Context context, uint slot, const Buffer buffer);

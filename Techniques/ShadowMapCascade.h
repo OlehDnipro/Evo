@@ -112,7 +112,19 @@ struct SPerModel
 	float4x4 model;
 	static const char* GetName() { return "ModelConst"; }
 };
-
+struct SConstantData
+{
+	void Init(Device device, uint _size)
+	{
+		offset = AllocateConstantsSlice(device, _size);
+		size = _size;
+		buffer = GetConstantBuffer(device);
+		data = GetConstantBufferData(device, offset);
+	}
+	Buffer buffer;
+	uint offset,size;
+	uint8* data;
+};
 class IParameterProvider
 {
 public:
@@ -121,41 +133,21 @@ public:
 };
 
 template<class T>
-struct CConstantParameter
-{
-	Buffer m_Buffer;
-
-	T m_Data;
-	CConstantParameter() {}
-	void Init(Device device)
-	{
-		SBufferParams cb_params = { sizeof(T), HeapType::HEAP_DEFAULT, Usage::CONSTANT_BUFFER, "" };
-		m_Buffer = CreateBuffer(device, cb_params);
-	}
-	void Flush(Device device)
-	{
-		SMapBufferParams map_cb(GetMainContext(device), m_Buffer, 0, sizeof(T));
-		char* data = (char*)MapBuffer(map_cb);
-		memcpy(data, &m_Data, sizeof(T));
-		UnmapBuffer(map_cb);
-	}
-};
-template<class T>
 class CConstParameterProvider: public IParameterProvider
 {
 	uint8_t m_pBase;
 	static CParameterProviderLayout m_Layout;
 
 public:
-	CConstantParameter<T> m_Const;
+	SConstantData m_Const;
 	static void CreateParameterMap()
 	{
 		CConstParameterProvider<T> p;
-		m_Layout.AddParameter(T::GetName(), (uint8_t*)&p.m_Const.m_Buffer - (uint8_t*)&p.m_pBase);
+		m_Layout.AddParameter(T::GetName(), (uint8_t*)&p.m_Const - (uint8_t*)&p.m_pBase);
 	}
 	uint8_t* GetBaseParameterPointer() { return &m_pBase; }
-	void Init(Device device) { m_Const.Init(device); }
-	T& Get() { return m_Const.m_Data; }
+	void Init(Device device) { m_Const.Init(device, sizeof(T)); }
+	T& Get() { return *(T*)m_Const.data; }
 	uint32_t GetLayoutId() { return m_Layout.GetId(); };
 };
 class CModelParameterProvider: IParameterProvider
@@ -163,19 +155,19 @@ class CModelParameterProvider: IParameterProvider
 	uint8_t m_pBase;
 	static CParameterProviderLayout m_Layout;
 public:
-	CConstantParameter<SPerModel> m_Const;
+	SConstantData m_Const;
 	Texture m_ModelTexture;
 
 	static void CreateParameterMap()
 	{
 		CModelParameterProvider p;
-		m_Layout.AddParameter(SPerModel::GetName(), (uint8_t*)&p.m_Const.m_Buffer - (uint8_t*)&p.m_pBase);
+		m_Layout.AddParameter(SPerModel::GetName(), (uint8_t*)&p.m_Const - (uint8_t*)&p.m_pBase);
 		m_Layout.AddParameter("ModelTexture", (uint8_t*)&p.m_ModelTexture - (uint8_t*)&p.m_pBase);
 	}
 	uint8_t* GetBaseParameterPointer() { return &m_pBase; }
-	SPerModel& Get() { return m_Const.m_Data; }
+	SPerModel& Get() { return *(SPerModel*)m_Const.data; }
 	uint32_t GetLayoutId() { return m_Layout.GetId(); };
-	void Init(Device device) { m_Const.Init(device); }
+	void Init(Device device) { m_Const.Init(device, sizeof(SPerModel)); }
 };
 
 class CShadowParameterProvider: IParameterProvider
@@ -183,18 +175,18 @@ class CShadowParameterProvider: IParameterProvider
 	uint8_t m_pBase;
 	static CParameterProviderLayout m_Layout;
 public:
-	CConstantParameter<SShadow> m_Const;
+	SConstantData m_Const;
 	Texture m_ShadowCascades;
 
 	static void CreateParameterMap()
 	{
 		CShadowParameterProvider p;
-		m_Layout.AddParameter(SShadow::GetName(), (uint8_t*)&p.m_Const.m_Buffer - (uint8_t*)&p.m_pBase);
+		m_Layout.AddParameter(SShadow::GetName(), (uint8_t*)&p.m_Const - (uint8_t*)&p.m_pBase);
 		m_Layout.AddParameter("ShadowMapCascades", (uint8_t*)&p.m_ShadowCascades - (uint8_t*)&p.m_pBase);
 	}
 	uint8_t* GetBaseParameterPointer() { return &m_pBase; }
-	SShadow& Get() { return m_Const.m_Data; }
-	void Init(Device device) { m_Const.Init(device); }
+	SShadow& Get() { return *(SShadow*)m_Const.data; }
+	void Init(Device device) { m_Const.Init(device, sizeof(SShadow)); }
 	uint32_t GetLayoutId() { return m_Layout.GetId(); };
 
 };
@@ -249,9 +241,6 @@ private:
 	public:
 		SimpleObjectInstance(const SimpleObject& object, Device device, RootSignature root, float4x4 mtx);
 		void Draw(Context context);
-		void Flush(Device device) {
-			m_Provider.m_Const.Flush(device);
-		}
 		IParameterProvider* GetModelProvider() { return (IParameterProvider*)&m_Provider; };
 	};
 	std::vector<SimpleObject> m_Objects;
