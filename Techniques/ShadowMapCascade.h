@@ -125,70 +125,58 @@ struct SConstantData
 	uint offset,size;
 	uint8* data;
 };
-class IParameterProvider
-{
-public:
-	virtual uint8_t* GetBaseParameterPointer() = 0;
-	virtual uint32_t GetLayoutId() = 0;
-};
-
 template<class T>
-class CConstParameterProvider: public IParameterProvider
+class CConstantParameter
 {
-	uint8_t m_pBase;
-	static CParameterProviderLayout m_Layout;
-
+	SConstantData p;
 public:
-	SConstantData m_Const;
-	static void CreateParameterMap()
-	{
-		CConstParameterProvider<T> p;
-		m_Layout.AddParameter(T::GetName(), (uint8_t*)&p.m_Const - (uint8_t*)&p.m_pBase);
-	}
-	uint8_t* GetBaseParameterPointer() { return &m_pBase; }
-	void Init(Device device) { m_Const.Init(device, sizeof(T)); }
-	T& Get() { return *(T*)m_Const.data; }
-	uint32_t GetLayoutId() { return m_Layout.GetId(); };
+	void Init(Device device) { p.Init(device, sizeof(T)); }
+	T& Get() { return *((T*)p.data); }
+	Buffer GetBuffer() { return p.buffer; }
+	uint8* GetPtr() { return (uint8*)&p.buffer; }
 };
-class CModelParameterProvider: IParameterProvider
-{
-	uint8_t m_pBase;
-	static CParameterProviderLayout m_Layout;
-public:
-	SConstantData m_Const;
-	Texture m_ModelTexture;
 
+class CModelParameterProvider: public CParameterProviderBase<CModelParameterProvider>
+{
+public:
+	Texture m_ModelTexture;
+	CConstantParameter<SPerModel> m_ModelConst;
 	static void CreateParameterMap()
 	{
 		CModelParameterProvider p;
-		m_Layout.AddParameter(SPerModel::GetName(), (uint8_t*)&p.m_Const - (uint8_t*)&p.m_pBase);
+		m_Layout.AddParameter(SPerModel::GetName(), p.m_ModelConst.GetPtr() - (uint8_t*)&p.m_pBase);
 		m_Layout.AddParameter("ModelTexture", (uint8_t*)&p.m_ModelTexture - (uint8_t*)&p.m_pBase);
 	}
-	uint8_t* GetBaseParameterPointer() { return &m_pBase; }
-	SPerModel& Get() { return *(SPerModel*)m_Const.data; }
-	uint32_t GetLayoutId() { return m_Layout.GetId(); };
-	void Init(Device device) { m_Const.Init(device, sizeof(SPerModel)); }
+	void Init(Device device) { m_ModelConst.Init(device); }
+	SPerModel& Get() { return m_ModelConst.Get(); }
 };
 
-class CShadowParameterProvider: IParameterProvider
+class CViewportParameterProvider : public CParameterProviderBase<CViewportParameterProvider>
 {
-	uint8_t m_pBase;
-	static CParameterProviderLayout m_Layout;
 public:
-	SConstantData m_Const;
-	Texture m_ShadowCascades;
+	CConstantParameter<SPerFrame> m_ModelConst;
+	static void CreateParameterMap()
+	{
+		CViewportParameterProvider p;
+		m_Layout.AddParameter(SPerFrame::GetName(), p.m_ModelConst.GetPtr() - (uint8_t*)&p.m_pBase);
+	}
+	void Init(Device device) { m_ModelConst.Init(device); }
+	SPerFrame& Get() { return m_ModelConst.Get(); }
+};
 
+class CShadowParameterProvider: public CParameterProviderBase<CShadowParameterProvider>
+{
+public:
+	Texture m_ShadowCascades;
+	CConstantParameter<SShadow> m_ModelConst;
 	static void CreateParameterMap()
 	{
 		CShadowParameterProvider p;
-		m_Layout.AddParameter(SShadow::GetName(), (uint8_t*)&p.m_Const - (uint8_t*)&p.m_pBase);
+		m_Layout.AddParameter(SShadow::GetName(), p.m_ModelConst.GetPtr() - (uint8_t*)&p.m_pBase);
 		m_Layout.AddParameter("ShadowMapCascades", (uint8_t*)&p.m_ShadowCascades - (uint8_t*)&p.m_pBase);
 	}
-	uint8_t* GetBaseParameterPointer() { return &m_pBase; }
-	SShadow& Get() { return *(SShadow*)m_Const.data; }
-	void Init(Device device) { m_Const.Init(device, sizeof(SShadow)); }
-	uint32_t GetLayoutId() { return m_Layout.GetId(); };
-
+	void Init(Device device) { m_ModelConst.Init(device); }
+	SShadow& Get() { return m_ModelConst.Get(); }
 };
 class ShadowMapCascade
 {
@@ -265,8 +253,8 @@ private:
 	Pipeline m_Pipeline[PassEnum::Count];
 	PassEnum m_currentPass;
 
-	CConstParameterProvider<SPerFrame> m_ViewportProvider;
-	CConstParameterProvider<SPerFrame> m_ShadowViewportProvider[SHADOW_MAP_CASCADE_COUNT];
+	CViewportParameterProvider m_ViewportProvider;
+	CViewportParameterProvider m_ShadowViewportProvider[SHADOW_MAP_CASCADE_COUNT];
 
 	CShadowParameterProvider m_ShadowProvider;
 

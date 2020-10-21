@@ -23,9 +23,9 @@
 #include "ShadowMapCascade.pipeline.h"
 
 //const uint VB_SIZE = 16*1024;
-CParameterProviderLayout CConstParameterProvider<SPerFrame>::m_Layout = CParameterProviderLayout(&CConstParameterProvider<SPerFrame>::CreateParameterMap);
-CParameterProviderLayout CShadowParameterProvider::m_Layout = CParameterProviderLayout(&CShadowParameterProvider::CreateParameterMap);
-CParameterProviderLayout CModelParameterProvider::m_Layout = CParameterProviderLayout(&CModelParameterProvider::CreateParameterMap);
+CParameterProviderLayout CParameterProviderBase<CViewportParameterProvider>::m_Layout = CParameterProviderLayout(&CViewportParameterProvider::CreateParameterMap);
+CParameterProviderLayout CParameterProviderBase<CShadowParameterProvider>::m_Layout = CParameterProviderLayout(&CShadowParameterProvider::CreateParameterMap);
+CParameterProviderLayout CParameterProviderBase<CModelParameterProvider>::m_Layout = CParameterProviderLayout(&CModelParameterProvider::CreateParameterMap);
 
 //#define PROV
 
