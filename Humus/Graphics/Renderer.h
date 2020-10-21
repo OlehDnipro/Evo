@@ -327,6 +327,7 @@ struct SResourceDesc
 	const void* m_Resource;
 	ResourceType m_Type;
 };
+void UpdateResourceTable(Device device, RootSignature root, uint32 slot, ResourceTable table, const SResourceDesc* resources, uint offset, uint count);
 no_inline ResourceTable CreateResourceTable(Device device, RootSignature root, uint32 slot, const SResourceDesc* resources, uint count);
 template<int N> force_inline ResourceTable CreateResourceTable(Device device, RootSignature root, uint32 slot, const SResourceDesc(&resources)[N]) { return CreateResourceTable(device, root, slot, resources, N); }
 void DestroyResourceTable(Device device, ResourceTable& table);
@@ -561,13 +562,13 @@ void SetPipeline(Context context, const Pipeline pipeline);
 void SetVertexSetup(Context context, const VertexSetup setup);
 
 uint8* SetVertexBuffer(Context context, uint stream, uint stride, uint count);
-
+/*
 uint8* SetGraphicsConstantBuffer(Context context, uint slot, uint size);
 uint8* SetComputeConstantBuffer(Context context, uint slot, uint size);
 
 void SetGraphicsConstantBuffer(Context context, uint slot, const Buffer buffer);
 void SetComputeConstantBuffer(Context context, uint slot, const Buffer buffer);
-
+*/
 void SetRootConstants(Context context, uint slot, const void* data, uint count);
 
 void SetRootTextureBuffer(Context context, uint slot, const Buffer buffer);

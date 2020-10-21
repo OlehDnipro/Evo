@@ -53,3 +53,6 @@ struct SVulkanRoot
 	uint32 m_NumSlots;
 	SVulkanRootSlot m_Slots[1]; // Will actually contain m_NumSlots elements
 };
+typedef void (*RootCallback)(ItemType type, uint table, uint binding, uint table_creation_size, void* receiver);
+
+void IterateRootSignature(SRootSignature* root, RootCallback callback, void* receiver);

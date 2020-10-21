@@ -52,6 +52,8 @@ struct SCommandListAllocator
 	void End(Device device);
 
 	uint32 AllocateUploadBuffer(Device device, uint size, uint alignment);
+	uint32 AllocateConstantBuffer(uint size, uint alignment);
+
 };
 static VkDebugUtilsMessengerEXT debugMessenger = VK_NULL_HANDLE;
 static VKAPI_ATTR VkBool32 VKAPI_CALL VulkanCallback(VkDebugUtilsMessageSeverityFlagBitsEXT        messageSeverityBit,
@@ -256,7 +258,16 @@ struct SRootSignature
 
 	VkPipelineLayout m_PipelineLayout;
 };
-
+void IterateRootSignature(SRootSignature* root, RootCallback callback, void* receiver)
+{
+	for (int slot = 0; slot < root->m_SlotCount; slot++)
+	{
+		for (int i = 0; i < root->m_Slots[slot].m_Size; i++)
+		{
+			callback(root->m_Slots[slot].m_Items[i].m_Type, slot, i, i == 0? root->m_Slots[slot].m_Size:0, receiver);
+		}
+	}
+}
 struct SPipeline
 {
 	VkPipeline m_Pipeline;
@@ -1218,6 +1229,110 @@ void DestroyTexture(Device device, Texture& texture)
 		texture = VK_NULL_HANDLE;
 	}
 }
+void UpdateResourceTable(Device device, RootSignature root, uint32 slot, ResourceTable table,  const SResourceDesc* resources, uint offset, uint count)
+{
+	const SRootSignature::SRootSlot& root_slot = root->m_Slots[slot];
+	VkResult res;
+	VkDescriptorSet descriptor_set = table->m_DescriptorSet;
+	VkDescriptorImageInfo image_info = {};
+
+	VkDescriptorBufferInfo buffer_info = {};
+	buffer_info.range = VK_WHOLE_SIZE;
+
+	VkWriteDescriptorSet descriptor_write = {};
+	descriptor_write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+	descriptor_write.dstSet = descriptor_set;
+	descriptor_write.descriptorCount = 1;
+
+	uint binding = offset;
+	uint element = 0;
+
+	for (uint i = offset; i < offset + count; i++)
+	{
+		const SVulkanResourceTableItem& item = root_slot.m_Items[binding];
+
+		switch (item.m_Type)
+		{
+		case TEXTURE:
+		case RWTEXTURE:
+		{
+			ASSERT(resources[i].m_Type == RESTYPE_TEXTURE);
+
+			Texture texture = (Texture)resources[i].m_Resource;
+			if (texture->m_ImageView == VK_NULL_HANDLE)
+			{
+				VkImageViewCreateInfo view_info = {};
+				view_info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+				view_info.pNext = VK_NULL_HANDLE;
+				view_info.format = g_Formats[texture->m_Format];
+				view_info.components = { VK_COMPONENT_SWIZZLE_R, VK_COMPONENT_SWIZZLE_G, VK_COMPONENT_SWIZZLE_B, VK_COMPONENT_SWIZZLE_A };
+				view_info.subresourceRange.aspectMask = IsDepthFormat(texture->m_Format) ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT;
+				view_info.subresourceRange.baseMipLevel = 0;
+				view_info.subresourceRange.levelCount = texture->m_MipLevels;
+				view_info.subresourceRange.baseArrayLayer = 0;
+				view_info.subresourceRange.layerCount = texture->m_Slices;
+				view_info.viewType = g_TextureTypes[texture->m_Type];
+				view_info.flags = 0;
+				view_info.image = texture->m_Image;
+
+				res = vkCreateImageView(device->m_Device, &view_info, VK_NULL_HANDLE, &texture->m_ImageView);
+				ASSERT(res == VK_SUCCESS);
+			}
+
+			descriptor_write.descriptorType = (item.m_Type == TEXTURE) ? VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE : VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+			descriptor_write.pImageInfo = &image_info;
+			descriptor_write.pBufferInfo = VK_NULL_HANDLE;
+			image_info.imageView = texture->m_ImageView;
+			image_info.imageLayout = (item.m_Type == TEXTURE) ? VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL : VK_IMAGE_LAYOUT_GENERAL;
+			break;
+		}
+		case STRUCTUREDBUFFER:
+		case RWSTRUCTUREDBUFFER:
+		{
+			ASSERT(resources[i].m_Type == RESTYPE_BUFFER);
+
+			Buffer buffer = (Buffer)resources[i].m_Resource;
+
+			descriptor_write.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+			descriptor_write.pImageInfo = VK_NULL_HANDLE;
+			descriptor_write.pBufferInfo = &buffer_info;
+
+			buffer_info.buffer = buffer->m_Buffer;
+			break;
+		}
+		case CBV:
+		{
+			ASSERT(resources[i].m_Type == RESTYPE_BUFFER);
+
+			Buffer buffer = (Buffer)resources[i].m_Resource;
+
+			descriptor_write.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+			descriptor_write.pImageInfo = VK_NULL_HANDLE;
+			descriptor_write.pBufferInfo = &buffer_info;
+
+			buffer_info.buffer = buffer->m_Buffer;
+			break;
+		}
+		default:
+			ASSERT(false);
+		}
+
+		descriptor_write.dstBinding = binding;
+		descriptor_write.dstArrayElement = element;
+
+		vkUpdateDescriptorSets(device->m_Device, 1, &descriptor_write, 0, VK_NULL_HANDLE);
+
+		++element;
+		if (element >= root_slot.m_Items[binding].m_NumElements)
+		{
+			binding++;
+			element = 0;
+		}
+	}
+
+	// If you hit this assert, you have a mismatch between declared resource table in the .pipeline file and the provided resources to this call
+//	ASSERT(binding == root_slot.m_Size && element == 0);
+}
 
 ResourceTable CreateResourceTable(Device device, RootSignature root, uint32 slot, const SResourceDesc* resources, uint count)
 {
@@ -1235,110 +1350,13 @@ ResourceTable CreateResourceTable(Device device, RootSignature root, uint32 slot
 
 	VkResult res = vkAllocateDescriptorSets(device->m_Device, &info, &descriptor_set);
 	ASSERT(res == VK_SUCCESS);
-
-	VkDescriptorImageInfo image_info = {};
-
-	VkDescriptorBufferInfo buffer_info = {};
-	buffer_info.range = VK_WHOLE_SIZE;
-
-	VkWriteDescriptorSet descriptor_write = {};
-	descriptor_write.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-	descriptor_write.dstSet = descriptor_set;
-	descriptor_write.descriptorCount = 1;
-
-	uint binding = 0;
-	uint element = 0;
-
-	for (uint i = 0; i < count; i++)
-	{
-		const SVulkanResourceTableItem& item = root_slot.m_Items[binding];
-
-		switch (item.m_Type)
-		{
-			case TEXTURE:
-			case RWTEXTURE:
-			{
-				ASSERT(resources[i].m_Type == RESTYPE_TEXTURE);
-
-				Texture texture = (Texture) resources[i].m_Resource;
-				if (texture->m_ImageView == VK_NULL_HANDLE)
-				{
-					VkImageViewCreateInfo view_info = {};
-					view_info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-					view_info.pNext = VK_NULL_HANDLE;
-					view_info.format = g_Formats[texture->m_Format];
-					view_info.components = { VK_COMPONENT_SWIZZLE_R, VK_COMPONENT_SWIZZLE_G, VK_COMPONENT_SWIZZLE_B, VK_COMPONENT_SWIZZLE_A };
-					view_info.subresourceRange.aspectMask = IsDepthFormat(texture->m_Format)? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT;
-					view_info.subresourceRange.baseMipLevel = 0;
-					view_info.subresourceRange.levelCount = texture->m_MipLevels;
-					view_info.subresourceRange.baseArrayLayer = 0;
-					view_info.subresourceRange.layerCount = texture->m_Slices;
-					view_info.viewType = g_TextureTypes[texture->m_Type];
-					view_info.flags = 0;
-					view_info.image = texture->m_Image;
-
-					res = vkCreateImageView(device->m_Device, &view_info, VK_NULL_HANDLE, &texture->m_ImageView);
-					ASSERT(res == VK_SUCCESS);
-				}
-
-				descriptor_write.descriptorType = (item.m_Type == TEXTURE)? VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE : VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
-				descriptor_write.pImageInfo = &image_info;
-				descriptor_write.pBufferInfo = VK_NULL_HANDLE;
-				image_info.imageView = texture->m_ImageView;
-				image_info.imageLayout = (item.m_Type == TEXTURE)? VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL : VK_IMAGE_LAYOUT_GENERAL;
-				break;
-			}
-			case STRUCTUREDBUFFER:
-			case RWSTRUCTUREDBUFFER:
-			{
-				ASSERT(resources[i].m_Type == RESTYPE_BUFFER);
-
-				Buffer buffer = (Buffer) resources[i].m_Resource;
-
-				descriptor_write.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-				descriptor_write.pImageInfo = VK_NULL_HANDLE;
-				descriptor_write.pBufferInfo = &buffer_info;
-
-				buffer_info.buffer = buffer->m_Buffer;
-				break;
-			}
-			case CBV:
-			{
-				ASSERT(resources[i].m_Type == RESTYPE_BUFFER);
-
-				Buffer buffer = (Buffer)resources[i].m_Resource;
-
-				descriptor_write.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-				descriptor_write.pImageInfo = VK_NULL_HANDLE;
-				descriptor_write.pBufferInfo = &buffer_info;
-
-				buffer_info.buffer = buffer->m_Buffer;
-				break;
-			}
-			default:
-				ASSERT(false);
-		}
-
-		descriptor_write.dstBinding = binding;
-		descriptor_write.dstArrayElement = element;
-
-		vkUpdateDescriptorSets(device->m_Device, 1, &descriptor_write, 0, VK_NULL_HANDLE);
-
-		++element;
-		if (element >= root_slot.m_Items[binding].m_NumElements)
-		{
-			binding++;
-			element = 0;
-		}
-	}
-
-	// If you hit this assert, you have a mismatch between declared resource table in the .pipeline file and the provided resources to this call
-	ASSERT(binding == root_slot.m_Size && element == 0);
-
-
 	ResourceTable rt = new SResourceTable();
 	rt->m_DescriptorSet = descriptor_set;
 
+	if (resources)
+	{
+		UpdateResourceTable(device, root, slot, rt, resources, 0, count);
+	}
 	return rt;
 }
 
@@ -2268,7 +2286,7 @@ uint GetBufferSize(Buffer buffer)
 {
 	return buffer->m_Size;
 }
-
+#define CONTANT_BUFFER_SIZE  1024*1024
 void SCommandListAllocator::Init(Device device)
 {
 	VkQueryPoolCreateInfo info = {};
@@ -2280,6 +2298,7 @@ void SCommandListAllocator::Init(Device device)
 
 	SBufferParams params(MAX_QUERY_COUNT * sizeof(uint64), HEAP_READBACK, NONE, "QueryBuffer");
 	m_QueryBuffer = CreateBuffer(device, params);
+
 }
 
 void SCommandListAllocator::Destroy(Device device)
@@ -2316,6 +2335,7 @@ void SCommandListAllocator::End(Device device)
 		vkUnmapMemory(device->m_Device, m_UploadBuffer->m_Memory);
 	}
 }
+
 
 uint32 SCommandListAllocator::AllocateUploadBuffer(Device device, uint size, uint alignment)
 {

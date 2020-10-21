@@ -24,6 +24,7 @@
 #include "Humus/Windows/Resource.h"
 
 #include "Techniques/ShadowMapCascade.h"
+#include "ParameterProviderRegistry.h"
 /*
 #include "../CPU.h"
 #include <direct.h>
@@ -169,7 +170,7 @@ public:
 			BeginRenderPass(context, "Shadow", m_RenderPassShadow, m_ShadowSetup[i], float4(0, 0, 0, 0));
 			m_Shadows.Update(context, i);
 			m_Shadows.PrepareDraw(m_Device, m_RenderPassShadow, ShadowMapCascade::ShadowPass);
-			m_Shadows.Draw(context);
+			m_Shadows.Draw(context,i);
 			EndRenderPass(context, m_ShadowSetup[i]);
 		}
 		BeginRenderPass(context, "Backbuffer", m_RenderPassMain, m_RenderSetup[buffer_index], float4(0, 0, 0, 0));

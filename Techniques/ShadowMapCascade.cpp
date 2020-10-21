@@ -23,7 +23,11 @@
 #include "ShadowMapCascade.pipeline.h"
 
 //const uint VB_SIZE = 16*1024;
+CParameterProviderLayout CConstParameterProvider<SPerFrame>::m_Layout = CParameterProviderLayout(&CConstParameterProvider<SPerFrame>::CreateParameterMap);
+CParameterProviderLayout CShadowParameterProvider::m_Layout = CParameterProviderLayout(&CShadowParameterProvider::CreateParameterMap);
+CParameterProviderLayout CModelParameterProvider::m_Layout = CParameterProviderLayout(&CModelParameterProvider::CreateParameterMap);
 
+//#define PROV
 
 ShadowMapCascade::ShadowMapCascade()
 {
@@ -37,36 +41,25 @@ bool ShadowMapCascade::SimpleObject::Init(Device device, VertexLayout layout,con
 {
 	m_Model.loadFromFile(model, layout, scale, device);
 	m_Texture = CreateTexture(device, texture);
-
 	return true;
 }
-ShadowMapCascade::SimpleObjectInstance::SimpleObjectInstance(const SimpleObject& object, Device device, RootSignature root, float4x4 mtx) :m_Object(object), m_ModelMatrix(mtx)
+ShadowMapCascade::SimpleObjectInstance::SimpleObjectInstance(const SimpleObject& object, Device device, RootSignature root, float4x4 mtx) :m_Object(object)
 {
 	SBufferParams cb_params = { sizeof(SPerModel), HeapType::HEAP_DEFAULT, Usage::CONSTANT_BUFFER, "" };
-	m_CB = CreateBuffer(device, cb_params);
-
-	SMapBufferParams map_cb(GetMainContext(device), m_CB, 0, sizeof(SPerModel));
-	void* data = MapBuffer(map_cb);
-	memcpy(data, &m_ModelMatrix, sizeof(SPerModel));
-	UnmapBuffer(map_cb);
-
-	SResourceDesc constants[] = { m_CB };
-	m_ConstantTable = CreateResourceTable(device, root, NShadowMapCascade::ModelConst, constants);
-	SResourceDesc resources[] = { m_Object.m_Texture };
-	m_ResourceTable = CreateResourceTable(device, root, NShadowMapCascade::ModelResources, resources);
-
+	m_Provider.Init(device);
+	m_Provider.Get().model = mtx;
+	m_Provider.m_ModelTexture = m_Object.m_Texture ;
 }
 void ShadowMapCascade::SimpleObjectInstance::Draw(Context context)
 {
-	SetGraphicsResourceTable(context, NShadowMapCascade::ModelConst, m_ConstantTable);
-	SetGraphicsResourceTable(context, NShadowMapCascade::ModelResources, m_ResourceTable);
 	SetVertexSetup(context, m_Object.m_Model.GetVertexSetup());
 	DrawIndexed(context, 0, m_Object.m_Model.indexCount);
 }
 void ShadowMapCascade::SetCameraLookAt(vec3 eye, vec3 target, vec3 up)
 {
 	m_Camera.lookat(eye, target, up);
-	m_perFrame.view = m_Camera.GetViewTransform();
+	m_ViewportProvider.Get().view = m_Camera.GetViewTransform();
+	m_perFrame = m_ViewportProvider.Get();
 
 	vec4 frustumView[] = {
 		{ -1,  1, 0, 1},
@@ -79,7 +72,7 @@ void ShadowMapCascade::SetCameraLookAt(vec3 eye, vec3 target, vec3 up)
 		{ -1, -1, 1, 1}
 	};
 	const int points = sizeof(frustumView) / sizeof(vec4);
-	float4x4 toWorld = inverse(mul(m_perFrame.projection, m_perFrame.view));
+	float4x4 toWorld = inverse(mul(m_ViewportProvider.Get().projection, m_ViewportProvider.Get().view));
 
 
 	for (int i = 0; i < points; i++)
@@ -95,7 +88,7 @@ void ShadowMapCascade::SetCameraLookAt(vec3 eye, vec3 target, vec3 up)
 		float log = nearPlane * pow(farPlane / nearPlane, ( i + 1.0f) / SHADOW_MAP_CASCADE_COUNT);
 		const float lambda = 0.9;
 		float lerped = lambda * log + (1 - lambda) * uni;
-		m_perFrame.cascadePlanes[i] = (lerped - nearPlane) / (farPlane - nearPlane);
+		m_ShadowProvider.Get().cascadePlanes[i] = (lerped - nearPlane) / (farPlane - nearPlane);
 	}
 	for (int casc = 0; casc < SHADOW_MAP_CASCADE_COUNT; casc++)
 	{
@@ -108,29 +101,61 @@ void ShadowMapCascade::SetCameraLookAt(vec3 eye, vec3 target, vec3 up)
 		{
 			diff[i] = frustumView[i + 4] - frustumView[i];
 			frustumCascade[i] = frustumView[i] + diff[i] * lastSplit;
-			frustumCascade[i + 4] = frustumView[i] + diff[i] * m_perFrame.cascadePlanes[casc];
+			frustumCascade[i + 4] = frustumView[i] + diff[i] * m_ShadowProvider.Get().cascadePlanes[casc];
 			center += frustumCascade[i];
 			center += frustumCascade[i + 4];
 		}
-		lastSplit = m_perFrame.cascadePlanes[casc];
-		m_perFrame.cascadePlanes[casc] = nearPlane + (farPlane - nearPlane) * m_perFrame.cascadePlanes[casc];
+		lastSplit = m_ShadowProvider.Get().cascadePlanes[casc];
+		m_ShadowProvider.Get().cascadePlanes[casc] = nearPlane + (farPlane - nearPlane) * m_ShadowProvider.Get().cascadePlanes[casc];
 		center /= 8;
 		for (int i = 0; i < points; i++)
 		{
 			float dist = length(center - frustumCascade[i]);
-			radius = max(radius, dist);
+			radius = radius > dist ? radius:dist;
 		}
 		vec3 _center(center.x, center.y, center.z);
-		vec3 light_eye = _center - m_perFrame.lightDir * radius;
+		vec3 light_eye = _center - m_ViewportProvider.Get().lightDir * radius;
 		Camera cam;
 		cam.lookat(light_eye, _center, vec3(0, 1, 0));
-		m_perFrame.lightViewProjection[casc] = mul(ProjectiveMatrix(2 * radius, 2 * radius, 0, 2 * radius), cam.GetViewTransform());
+		m_ShadowProvider.Get().lightViewProjection[casc] = mul(ProjectiveMatrix(2 * radius, 2 * radius, 0, 2 * radius), cam.GetViewTransform());
+	}
+	float4 vec(0, 0, m_ShadowProvider.Get().cascadePlanes[1], 1);
+	vec = mul(m_Camera.GetProjection(), vec);
+	vec /= vec.w;
+}
+void ShadowMapCascade::FindRootResource(ItemType type, uint slot, uint binding, uint first_item_of_table_with_size, void* receiver)
+{
+	ShadowMapCascade* shadow = (ShadowMapCascade*)receiver;
+	if (first_item_of_table_with_size)
+	{
+		TableUpdate update;
+		update.slot = slot;
+		update.m_Descriptors.resize(first_item_of_table_with_size);
+		shadow->m_TableUpdates.push_back(update);
+	}
+	const char* name = NShadowMapCascade::RootItemNames[slot][binding];
+	uint32_t layout, offset;
+	bool new_search = true;
+	while(CParameterProviderRegistry::GetInstane()->FindNextLayout(name, new_search, layout, offset))
+	{
+		new_search = false;
+		shadow->m_ProviderUsage[layout].push_back({ type, offset, slot, binding });
 	}
 }
 
 bool ShadowMapCascade::CreateResources(Device device, Texture shadowMap)
 {
+	for (auto& prov : m_ShadowViewportProvider)
+	{
+		prov.Init(device);
+	}
+	m_ViewportProvider.Init(device);
+	m_ShadowProvider.Init(device);
+
 	if ((m_RootSig = CreateRootSignature(device, NShadowMapCascade::RootSig)) == nullptr) return false;
+	SBufferParams cb_params = { sizeof(SPerFrame), HeapType::HEAP_DEFAULT, Usage::CONSTANT_BUFFER, "" };
+	m_ShadowProvider.m_ShadowCascades = shadowMap;
+
 	float4x4 mtx; mtx.identity();
 	m_Objects.resize(3);
 	m_Objects[0].Init(device, vertexLayout, "../../models/terrain_simple.dae", "../../Textures/gridlines.dds", 1.0f);
@@ -138,6 +163,7 @@ bool ShadowMapCascade::CreateResources(Device device, Texture shadowMap)
 	m_Objects[2].Init(device, vertexLayout, "../../models/oak_leafs.dae", "../../Textures/oak_leafs.dds", 2.0f);
 	m_ObjectInstances.resize(11);
 	m_ObjectInstances[0] = new SimpleObjectInstance(m_Objects[0], device, m_RootSig, mtx);
+
 	const std::vector<vec3> positions = {
 	vec3(0.0f, 0.0f, 0.0f),
 	vec3(1.25f, -0.25f, 1.25f),
@@ -160,18 +186,17 @@ bool ShadowMapCascade::CreateResources(Device device, Texture shadowMap)
 
 	const SSamplerDesc samplers[] = { { FILTER_TRILINEAR, 1, AM_WRAP, AM_WRAP, AM_WRAP, ALWAYS }, { FILTER_LINEAR, 1, AM_WRAP, AM_WRAP, AM_WRAP, LESS } };
 	if ((m_SamplerTable = CreateSamplerTable(device, m_RootSig, NShadowMapCascade::Samplers, samplers)) == nullptr) return false;
-	
-	SBufferParams cb_params = { sizeof(SPerFrame), HeapType::HEAP_DEFAULT, Usage::CONSTANT_BUFFER, "" };
-	m_FrameCB = CreateBuffer(device, cb_params);
+
+	m_ResourceTable = CreateResourceTable(device, m_RootSig, NShadowMapCascade::Resources, nullptr, 0);
+
+	IterateRootSignature(m_RootSig, &FindRootResource, this);
+
+
 	vec3 lightPos = { 6.18, 20, -19 };
-	m_perFrame.projection = m_Camera.ProjectPerspective(PI / 4, 720.0f / 1280.0f, 0.5, 20);
-	m_perFrame.lightDir = normalize(-lightPos);
-	
-	SResourceDesc constants[] = { m_FrameCB };
-	if ((m_FrameConstantTable = CreateResourceTable(device, m_RootSig, NShadowMapCascade::FrameConst, constants)) == nullptr) return false;
-
-	m_ShadowMap = shadowMap;
-
+	m_ViewportProvider.Get().projection = m_Camera.ProjectPerspective(PI / 4, 720.0f / 1280.0f, 0.5, 20);
+	m_ViewportProvider.Get().lightDir = normalize(-lightPos);
+		
+	/*
 	SResourceDesc resoures[] = { m_ShadowMap };
 	if ((m_FrameResourcesMain = CreateResourceTable(device, m_RootSig, NShadowMapCascade::FrameResources, resoures)) == nullptr) return false;
 	
@@ -184,7 +209,7 @@ bool ShadowMapCascade::CreateResources(Device device, Texture shadowMap)
 
 	SResourceDesc resouresSM[] = { m_defTexture };
 	if ((m_FrameResourcesSM = CreateResourceTable(device, m_RootSig, NShadowMapCascade::FrameResources, resouresSM)) == nullptr) return false;
-
+	*/
 	return true;
 }
 
@@ -204,8 +229,8 @@ void ShadowMapCascade::DestroyResources(Device device)
 	}
 
 	DestroyBuffer(device, m_MatrixCB);
-	DestroyBuffer(device, m_ColorCB);
-	DestroyRootSignature(device, m_RootSig);*/
+	DestroyBuffer(device, m_ColorCB);*/
+	DestroyRootSignature(device, m_RootSig);
 }
 
 
@@ -219,7 +244,29 @@ void ShadowMapCascade::SetMatrix(Context context, const float4x4 &matrix)
 }
 void ShadowMapCascade::Update(Context  context, int cascade)
 {
-	SPerFrame localperFrame = m_perFrame;
+	if (cascade >= 0)
+	{
+		SPerFrame& localperFrame = m_ShadowViewportProvider[cascade].Get();
+		float4x4 mat; mat.identity();
+		localperFrame.projection = mat;
+		localperFrame.view = m_ShadowProvider.Get().lightViewProjection[cascade];
+		m_ShadowViewportProvider[cascade].m_Const.Flush(GetDevice(context));
+
+		m_ViewportProvider.Get() = localperFrame;
+	}
+	else
+	{
+		m_ViewportProvider.Get() = m_perFrame;
+	}
+
+	m_ViewportProvider.m_Const.Flush(GetDevice(context));
+	m_ShadowProvider.m_Const.Flush(GetDevice(context));
+	for (int i = 0; i < 11; i++)
+	{
+		m_ObjectInstances[i]->Flush(GetDevice(context));
+	}
+
+	/*SPerFrame localperFrame = m_perFrame;
 
 	if (cascade >= 0)
 	{
@@ -231,7 +278,7 @@ void ShadowMapCascade::Update(Context  context, int cascade)
 	SMapBufferParams map_cb(context, m_FrameCB, 0, sizeof(SPerFrame));
 	char* data = (char*)MapBuffer(map_cb);
 	memcpy(data, &localperFrame, sizeof(SPerFrame));
-	UnmapBuffer(map_cb);
+	UnmapBuffer(map_cb);*/
 }
 void ShadowMapCascade::PrepareDraw(Device device,RenderPass pass, PassEnum passId)
 {
@@ -273,15 +320,58 @@ void ShadowMapCascade::PrepareDraw(Device device,RenderPass pass, PassEnum passI
 	}
 
 }
-void ShadowMapCascade::Draw(Context context)
+
+void ShadowMapCascade::GatherParameters(IParameterProvider** providers, uint count)
+{
+	for (int i = 0; i < count; i++)
+	{
+		uint32_t id = providers[i]->GetLayoutId();
+		auto usage = m_ProviderUsage.find(id);
+		if (usage != m_ProviderUsage.end())
+		{
+			for (auto& param : usage->second)
+			{
+				SResourceDesc& write = m_TableUpdates[param.m_slot].m_Descriptors[param.m_binding];
+				switch (param.m_type)
+				{
+				case TEXTURE:
+				case RWTEXTURE:
+					write = *(Texture*)(providers[i]->GetBaseParameterPointer() + param.m_provMemOffset);
+
+					break;
+
+				case STRUCTUREDBUFFER:
+				case RWSTRUCTUREDBUFFER:
+				case CBV:
+					write = *(Buffer*)(providers[i]->GetBaseParameterPointer() + param.m_provMemOffset);
+
+				}
+			}
+		}
+	}
+}
+void ShadowMapCascade::Draw(Context context, int cascade)
 {
 	SetRootSignature(context, m_RootSig);
-	SetGraphicsResourceTable(context, NShadowMapCascade::FrameConst, m_FrameConstantTable);
-	SetGraphicsResourceTable(context, NShadowMapCascade::FrameResources, m_FrameResourcesMain);
+	vector<IParameterProvider*> providers = { cascade < 0 ? (IParameterProvider*)&m_ViewportProvider :
+															(IParameterProvider*)&m_ShadowViewportProvider[cascade],
+															(IParameterProvider*)&m_ShadowProvider };
 	SetGraphicsSamplerTable(context, NShadowMapCascade::Samplers, m_SamplerTable);
+	GatherParameters(providers.data(), 2);
+	UpdateResourceTable(GetDevice(context), m_RootSig, NShadowMapCascade::Resources, m_ResourceTable,
+	m_TableUpdates[NShadowMapCascade::Resources].m_Descriptors.data(), 0, NShadowMapCascade::ModelConst);
+
+
 	SetPipeline(context, m_Pipeline[m_currentPass]);
 	for (int i = 0; i < 11; i++)
 	{
+		providers[0] = m_ObjectInstances[i]->GetModelProvider();
+		GatherParameters(providers.data(), 1);
+		UpdateResourceTable(GetDevice(context), m_RootSig, NShadowMapCascade::Resources, m_ResourceTable,
+			m_TableUpdates[NShadowMapCascade::Resources].m_Descriptors.data(), NShadowMapCascade::ModelConst, 2);
+
+			SetGraphicsResourceTable(context, NShadowMapCascade::Resources, m_ResourceTable);
+
 		m_ObjectInstances[i]->Draw(context);
 	}
 }
