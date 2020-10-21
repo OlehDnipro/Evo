@@ -1600,7 +1600,7 @@ RenderSetup CreateRenderSetup(Device device, RenderPass render_pass, Texture* co
 		view_create_info.subresourceRange.baseMipLevel = 0;
 		view_create_info.subresourceRange.levelCount = 1;
 		view_create_info.subresourceRange.baseArrayLayer = depth_slice;
-		view_create_info.subresourceRange.layerCount = depth_target->m_Slices;
+		view_create_info.subresourceRange.layerCount = 1;
 
 		VkImageView depth_view = VK_NULL_HANDLE;
 		VkResult res = vkCreateImageView(device->m_Device, &view_create_info, VK_NULL_HANDLE, &depth_view);
