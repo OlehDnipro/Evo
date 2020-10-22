@@ -15,7 +15,20 @@ enum NResources
 	Texture,
 	ScaleBias,
 
-	Count
+};
+
+const char* RootItemNames[2][2] =
+{
+
+	{
+		"Texture",
+		"ScaleBias"
+	},
+
+	{
+		"Filter"
+	},
+
 };
 
 static const char RootSig[] =

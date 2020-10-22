@@ -1163,7 +1163,7 @@ bool Patch( uint32_t* output, size_t size, std::map<std::string, std::pair<uint3
 		}
 	}
 }
-bool CompileShader(FILE* file, const char* external_compiler, const char* options, const SShaderSource& source, ShaderLanguage shader_language, GraphicsAPI api, const bool debug, const char* header, const char* root_header, const char* filename, const char *profile, std::map<std::string, std::pair<uint32_t, uint32_t>> const& bindings)
+bool CompileShader(FILE* file, const char* path,const char* external_compiler, const char* options, const SShaderSource& source, ShaderLanguage shader_language, GraphicsAPI api, const bool debug, const char* header, const char* root_header, const char* filename, const char *profile, std::map<std::string, std::pair<uint32_t, uint32_t>> const& bindings)
 {
 	const int num_shaders = (int) source.m_Names.size();
 	for (int sh = 0; sh < num_shaders; sh++)
@@ -1189,10 +1189,10 @@ bool CompileShader(FILE* file, const char* external_compiler, const char* option
 			DWORD process_id = GetCurrentProcessId();
 
 			char temp_src[128];
-			sprintf_s(temp_src, ".\\_temp_shader_%s_%d_%d.txt", name, sh, process_id);
+			sprintf_s(temp_src, "%s.\\_temp_shader_%s_%d_%d.txt",path, name, sh, process_id);
 
 			char temp_dst[128];
-			sprintf_s(temp_dst, ".\\_temp_blob_%s_%d_%d.blb", name, sh, process_id);
+			sprintf_s(temp_dst, "%s.\\_temp_blob_%s_%d_%d.blb",path, name, sh, process_id);
 
 			WriteFile(temp_src, shader.c_str(), shader.length());
 
@@ -1346,10 +1346,11 @@ void PrepareShaders(const std::vector<SShaderSource>& shaders)
 }
 
 template<class T>
-void ProcessFolder(const char* path, T& fileFunctor)
+void ProcessFolder(const char* _root,  T& fileFunctor)
 {
+	std::string root(_root);
 	WIN32_FIND_DATAA data;
-	HANDLE first = FindFirstFile(path, &data);
+	HANDLE first = FindFirstFile((root +"*").c_str(), &data);
 	if (first != INVALID_HANDLE_VALUE)
 	{
 		do
@@ -1359,12 +1360,12 @@ void ProcessFolder(const char* path, T& fileFunctor)
 			{
 				if (name[0] != '.')
 				{
-					ProcessFolder((name + "\\*").c_str(), fileFunctor);
+					ProcessFolder((root + name + "\\").c_str(), fileFunctor);
 				}
 			}
 			else
 			{
-				fileFunctor(data.cFileName);
+				fileFunctor((root + name).c_str());
 			}
 		} while (FindNextFile(first, &data));
 	}
@@ -1529,9 +1530,16 @@ int main(int argc, char **argv)
 		const char* header = str;
 
 		char name[MAX_PATH];
+		char path[MAX_PATH]; path[0] = 0;
+
 		const char* last_slash = strrchr(in_filename, '\\');
 
 		strcpy_s(name, last_slash ? last_slash + 1 : in_filename);
+		if (last_slash)
+		{
+			strncpy(path, in_filename, last_slash + 1 - in_filename);
+			path[last_slash + 1 - in_filename] = 0;
+		}
 		char* ext = strchr(name, '.');
 		if (ext)
 			*ext = '\0';
@@ -1562,7 +1570,7 @@ int main(int argc, char **argv)
 		const int ts_count = (int)task_shaders.size();
 		for (int i = 0; i < ts_count; i++)
 		{
-			if (!CompileShader(file, compiler, options, task_shaders[i], shader_language, api, debug, header, root_header, in_filename, ts_profile, m_bindings))
+			if (!CompileShader(file, path, compiler, options, task_shaders[i], shader_language, api, debug, header, root_header, in_filename, ts_profile, m_bindings))
 			{
 				res = COMPILE_ERROR;
 				goto quit;
@@ -1572,7 +1580,7 @@ int main(int argc, char **argv)
 		const int ms_count = (int)mesh_shaders.size();
 		for (int i = 0; i < ms_count; i++)
 		{
-			if (!CompileShader(file, compiler, options, mesh_shaders[i], shader_language, api, debug, header, root_header, in_filename, ms_profile, m_bindings))
+			if (!CompileShader(file, path, compiler, options, mesh_shaders[i], shader_language, api, debug, header, root_header, in_filename, ms_profile, m_bindings))
 			{
 				res = COMPILE_ERROR;
 				goto quit;
@@ -1582,7 +1590,7 @@ int main(int argc, char **argv)
 		const int vs_count = (int)vertex_shaders.size();
 		for (int i = 0; i < vs_count; i++)
 		{
-			if (!CompileShader(file, compiler, options, vertex_shaders[i], shader_language, api, debug, header, root_header, in_filename, vs_profile, m_bindings))
+			if (!CompileShader(file, path, compiler, options, vertex_shaders[i], shader_language, api, debug, header, root_header, in_filename, vs_profile, m_bindings))
 			{
 				res = COMPILE_ERROR;
 				goto quit;
@@ -1592,7 +1600,7 @@ int main(int argc, char **argv)
 		const int ps_count = (int)pixel_shaders.size();
 		for (int i = 0; i < ps_count; i++)
 		{
-			if (!CompileShader(file, compiler, options, pixel_shaders[i], shader_language, api, debug, header, root_header, in_filename, ps_profile, m_bindings))
+			if (!CompileShader(file, path, compiler, options, pixel_shaders[i], shader_language, api, debug, header, root_header, in_filename, ps_profile, m_bindings))
 			{
 				res = COMPILE_ERROR;
 				goto quit;
@@ -1602,7 +1610,7 @@ int main(int argc, char **argv)
 		const int cs_count = (int)compute_shaders.size();
 		for (int i = 0; i < cs_count; i++)
 		{
-			if (!CompileShader(file, compiler, options, compute_shaders[i], shader_language, api, debug, header, root_header, in_filename, cs_profile, m_bindings))
+			if (!CompileShader(file, path, compiler, options, compute_shaders[i], shader_language, api, debug, header, root_header, in_filename, cs_profile, m_bindings))
 			{
 				res = COMPILE_ERROR;
 				goto quit;
@@ -1620,7 +1628,7 @@ int main(int argc, char **argv)
 	char path[512];
 	GetModuleFileName(NULL, path, 512);
 	std::string _path(path);
-	_path = _path.substr(0, _path.rfind('\\') +1) + "*";
+	_path = _path.substr(0, _path.rfind('\\') +1);
 	ProcessFolder(_path.c_str(), processFile);
 	return 0;
 }
