@@ -258,8 +258,9 @@ struct SRootSignature
 
 	VkPipelineLayout m_PipelineLayout;
 };
-void IterateRootSignature(SRootSignature* root, RootCallback callback, void* receiver)
+void IterateRootSignature(SRootSignature* root, void* _callback, void* receiver)
 {
+	RootCallback callback = (RootCallback)_callback;
 	for (int slot = 0; slot < root->m_SlotCount; slot++)
 	{
 		for (int i = 0; i < root->m_Slots[slot].m_Size; i++)

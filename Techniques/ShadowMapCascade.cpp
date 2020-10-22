@@ -20,7 +20,7 @@
 \* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 
 #include "ShadowMapCascade.h"
-#include "ShadowMapCascade.pipeline.h"
+#include "Shaders\Tech\ShadowMapCascade.pipeline.h"
 
 //const uint VB_SIZE = 16*1024;
 CParameterProviderLayout CParameterProviderBase<CViewportParameterProvider>::m_Layout = CParameterProviderLayout(&CViewportParameterProvider::CreateParameterMap);

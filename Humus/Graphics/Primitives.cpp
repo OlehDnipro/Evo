@@ -20,7 +20,7 @@
 \* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 
 #include "Primitives.h"
-#include "Primitives.pipeline.h"
+#include "Shaders\Humus\Graphics\Primitives.pipeline.h"
 
 const uint VB_SIZE = 16*1024;
 
