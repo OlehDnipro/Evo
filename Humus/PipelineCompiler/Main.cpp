@@ -1345,6 +1345,30 @@ void PrepareShaders(const std::vector<SShaderSource>& shaders)
 	}
 }
 
+template<class T>
+void ProcessFolder(const char* path, T& fileFunctor)
+{
+	WIN32_FIND_DATAA data;
+	HANDLE first = FindFirstFile(path, &data);
+	if (first != INVALID_HANDLE_VALUE)
+	{
+		do
+		{
+			std::string name(data.cFileName);
+			if ((data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY ) )
+			{
+				if (name[0] != '.')
+				{
+					ProcessFolder((name + "\\*").c_str(), fileFunctor);
+				}
+			}
+			else
+			{
+				fileFunctor(data.cFileName);
+			}
+		} while (FindNextFile(first, &data));
+	}
+}
 int main(int argc, char **argv)
 {
 	const char* compiler = nullptr;
@@ -1357,19 +1381,13 @@ int main(int argc, char **argv)
 	const char* cs_profile = "cs_5_1";
 
 	ShaderLanguage shader_language = HLSL;
-	GraphicsAPI api = D3D12;
+	GraphicsAPI api = Vulkan;
 	bool debug = false;
 	bool fxc = false;
-	bool dxc = false;
+	bool dxc = true;
 	bool glslang = false;
 
-	if (argc < 2)
-	{
-		printf("Error: No input file\n");
-		return INVALID_INPUT;
-	}
-
-	for (int i = 2; i < argc; i++)
+	for (int i = 1; i < argc; i++)
 	{
 		if (strcmp(argv[i], "dxc") == 0)
 			dxc = true;
@@ -1455,143 +1473,154 @@ int main(int argc, char **argv)
 		shader_language = GLSL;
 	}
 
-
-	const char* in_filename = argv[1];
-
-
-	FILE* file = fopen(in_filename, "rb");
-	if (file == nullptr)
+	auto processFile = [=](const char* in_filename)
 	{
-		printf("Error: Can't open \"%s\"\n", in_filename);
-		return FILE_NOT_FOUND;
-	}
-
-	// Find file size
-	fseek(file, 0, SEEK_END);
-	long size = ftell(file);
-	fseek(file, 0, SEEK_SET);
-
-	char* str = new char[size + 1];
-	fread(str, 1, size, file);
-	str[size] = '\0';
-	fclose(file);
-
-	char* root_sig = strstr(str, "[Rootsig]");
-
-	std::vector<SShaderSource> task_shaders;
-	std::vector<SShaderSource> mesh_shaders;
-	std::vector<SShaderSource> vertex_shaders;
-	std::vector<SShaderSource> pixel_shaders;
-	std::vector<SShaderSource> compute_shaders;
-
-	ParseShaders(task_shaders,    str, "[Task:",    6);
-	ParseShaders(mesh_shaders,    str, "[Mesh:",    6);
-	ParseShaders(vertex_shaders,  str, "[Vertex:",  8);
-	ParseShaders(pixel_shaders,   str, "[Pixel:",   7);
-	ParseShaders(compute_shaders, str, "[Compute:", 9);
-
-	if (root_sig)
-	{
-		*root_sig = '\0';
-		root_sig += 9;
-	}
-
-	PrepareShaders(task_shaders);
-	PrepareShaders(mesh_shaders);
-	PrepareShaders(vertex_shaders);
-	PrepareShaders(pixel_shaders);
-	PrepareShaders(compute_shaders);
-
-	const char* header = str;
-
-	char name[MAX_PATH];
-	const char* last_slash = strrchr(in_filename, '\\');
-
-	strcpy_s(name, last_slash? last_slash + 1 : in_filename);
-	char* ext = strchr(name, '.');
-	if (ext)
-		*ext = '\0';
-
-	char out_filename_cpp[MAX_PATH];
-	sprintf_s(out_filename_cpp, "%s.h", in_filename);
-
-	file = fopen(out_filename_cpp, "wb");
-	if (file == nullptr)
-		return ACCESS_DENIED;
-
-	fprintf(file, "#pragma once\n\nnamespace N%s {\n", name);
-
-	char* root_header = nullptr;
-
-	std::map<std::string, std::pair<uint32_t, uint32_t>> m_bindings;
-	Error res = SUCCESS;
-	if (root_sig)
-	{
-		Error error = ParseRootSig(file, shader_language, api, root_header, root_sig, m_bindings);
-		if (error)
+		Error res = INVALID_INPUT;
+		std::string _name(in_filename);
+		int n = _name.rfind('.');
+		if (n == -1)
+			return res;
+		std::string _ext = _name.substr(n + 1);
+		if (_ext != "pipeline")
+			return  res;
+		FILE* file = fopen(in_filename, "rb");
+		if (file == nullptr)
 		{
-			res = error;
-			goto quit;
+			printf("Error: Can't open \"%s\"\n", in_filename);
+			return FILE_NOT_FOUND;
 		}
-	}
 
-	const int ts_count = (int) task_shaders.size();
-	for (int i = 0; i < ts_count; i++)
-	{
-		if (!CompileShader(file, compiler, options, task_shaders[i], shader_language, api, debug, header, root_header, in_filename, ts_profile, m_bindings))
+		// Find file size
+		fseek(file, 0, SEEK_END);
+		long size = ftell(file);
+		fseek(file, 0, SEEK_SET);
+
+		char* str = new char[size + 1];
+		fread(str, 1, size, file);
+		str[size] = '\0';
+		fclose(file);
+
+		char* root_sig = strstr(str, "[Rootsig]");
+
+		std::vector<SShaderSource> task_shaders;
+		std::vector<SShaderSource> mesh_shaders;
+		std::vector<SShaderSource> vertex_shaders;
+		std::vector<SShaderSource> pixel_shaders;
+		std::vector<SShaderSource> compute_shaders;
+
+		ParseShaders(task_shaders, str, "[Task:", 6);
+		ParseShaders(mesh_shaders, str, "[Mesh:", 6);
+		ParseShaders(vertex_shaders, str, "[Vertex:", 8);
+		ParseShaders(pixel_shaders, str, "[Pixel:", 7);
+		ParseShaders(compute_shaders, str, "[Compute:", 9);
+
+		if (root_sig)
 		{
-			res = COMPILE_ERROR;
-			goto quit;
+			*root_sig = '\0';
+			root_sig += 9;
 		}
-	}
 
-	const int ms_count = (int) mesh_shaders.size();
-	for (int i = 0; i < ms_count; i++)
-	{
-		if (!CompileShader(file, compiler, options, mesh_shaders[i], shader_language, api, debug, header, root_header, in_filename, ms_profile, m_bindings))
+		PrepareShaders(task_shaders);
+		PrepareShaders(mesh_shaders);
+		PrepareShaders(vertex_shaders);
+		PrepareShaders(pixel_shaders);
+		PrepareShaders(compute_shaders);
+
+		const char* header = str;
+
+		char name[MAX_PATH];
+		const char* last_slash = strrchr(in_filename, '\\');
+
+		strcpy_s(name, last_slash ? last_slash + 1 : in_filename);
+		char* ext = strchr(name, '.');
+		if (ext)
+			*ext = '\0';
+
+		char out_filename_cpp[MAX_PATH];
+		sprintf_s(out_filename_cpp, "%s.h", in_filename);
+
+		file = fopen(out_filename_cpp, "wb");
+		if (file == nullptr)
+			return ACCESS_DENIED;
+
+		fprintf(file, "#pragma once\n\nnamespace N%s {\n", name);
+
+		char* root_header = nullptr;
+
+		std::map<std::string, std::pair<uint32_t, uint32_t>> m_bindings;
+		res = SUCCESS;
+		if (root_sig)
 		{
-			res = COMPILE_ERROR;
-			goto quit;
+			Error error = ParseRootSig(file, shader_language, api, root_header, root_sig, m_bindings);
+			if (error)
+			{
+				res = error;
+				goto quit;
+			}
 		}
-	}
 
-	const int vs_count = (int) vertex_shaders.size();
-	for (int i = 0; i < vs_count; i++)
-	{
-		if (!CompileShader(file, compiler, options, vertex_shaders[i], shader_language, api, debug, header, root_header, in_filename, vs_profile, m_bindings))
+		const int ts_count = (int)task_shaders.size();
+		for (int i = 0; i < ts_count; i++)
 		{
-			res = COMPILE_ERROR;
-			goto quit;
+			if (!CompileShader(file, compiler, options, task_shaders[i], shader_language, api, debug, header, root_header, in_filename, ts_profile, m_bindings))
+			{
+				res = COMPILE_ERROR;
+				goto quit;
+			}
 		}
-	}
 
-	const int ps_count = (int) pixel_shaders.size();
-	for (int i = 0; i < ps_count; i++)
-	{
-		if (!CompileShader(file, compiler, options, pixel_shaders[i], shader_language, api, debug, header, root_header, in_filename, ps_profile, m_bindings))
+		const int ms_count = (int)mesh_shaders.size();
+		for (int i = 0; i < ms_count; i++)
 		{
-			res = COMPILE_ERROR;
-			goto quit;
+			if (!CompileShader(file, compiler, options, mesh_shaders[i], shader_language, api, debug, header, root_header, in_filename, ms_profile, m_bindings))
+			{
+				res = COMPILE_ERROR;
+				goto quit;
+			}
 		}
-	}
 
-	const int cs_count = (int) compute_shaders.size();
-	for (int i = 0; i < cs_count; i++)
-	{
-		if (!CompileShader(file, compiler, options, compute_shaders[i], shader_language, api, debug, header, root_header, in_filename, cs_profile, m_bindings))
+		const int vs_count = (int)vertex_shaders.size();
+		for (int i = 0; i < vs_count; i++)
 		{
-			res = COMPILE_ERROR;
-			goto quit;
+			if (!CompileShader(file, compiler, options, vertex_shaders[i], shader_language, api, debug, header, root_header, in_filename, vs_profile, m_bindings))
+			{
+				res = COMPILE_ERROR;
+				goto quit;
+			}
 		}
-	}
 
-quit:
+		const int ps_count = (int)pixel_shaders.size();
+		for (int i = 0; i < ps_count; i++)
+		{
+			if (!CompileShader(file, compiler, options, pixel_shaders[i], shader_language, api, debug, header, root_header, in_filename, ps_profile, m_bindings))
+			{
+				res = COMPILE_ERROR;
+				goto quit;
+			}
+		}
 
-	fprintf(file, "\n}; // namespace N%s\n", name);
-	fclose(file);
+		const int cs_count = (int)compute_shaders.size();
+		for (int i = 0; i < cs_count; i++)
+		{
+			if (!CompileShader(file, compiler, options, compute_shaders[i], shader_language, api, debug, header, root_header, in_filename, cs_profile, m_bindings))
+			{
+				res = COMPILE_ERROR;
+				goto quit;
+			}
+		}
 
-	delete [] root_header;
-	delete [] str;
+	quit:
 
-	return res;
+		fprintf(file, "\n}; // namespace N%s\n", name);
+		fclose(file);
+
+		delete[] root_header;
+		delete[] str;
+	};
+	char path[512];
+	GetModuleFileName(NULL, path, 512);
+	std::string _path(path);
+	_path = _path.substr(0, _path.rfind('\\') +1) + "*";
+	ProcessFolder(_path.c_str(), processFile);
+	return 0;
 }
