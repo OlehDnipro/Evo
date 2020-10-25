@@ -1396,6 +1396,23 @@ template<class T>
 void ProcessFolder(const char* _root,  T& fileFunctor)
 {
 	std::string root(_root);
+
+	std::map<std::string, size_t> hashes; 
+	FILE* fhashes = fopen((root + "hashtable.dat").c_str(), "rt");
+	if (fhashes)
+	{
+		while (!feof(fhashes))
+		{
+			char filename[MAX_PATH]; size_t hash = 0;
+			filename[0] = 0;
+			fscanf(fhashes, "%s %I64u", filename, &hash);
+			if (hash > 0)
+			{
+				hashes[filename] = hash;
+			}
+		}
+	}
+	bool has_shaders = false;
 	WIN32_FIND_DATAA data;
 	HANDLE first = FindFirstFile((root +"*").c_str(), &data);
 	if (first != INVALID_HANDLE_VALUE)
@@ -1412,9 +1429,21 @@ void ProcessFolder(const char* _root,  T& fileFunctor)
 			}
 			else
 			{
-				fileFunctor((root + name).c_str());
+				if (fileFunctor((root + name).c_str(), name.c_str(), hashes) == SUCCESS)
+					has_shaders = true;
 			}
 		} while (FindNextFile(first, &data));
+	}
+	if (has_shaders)
+	{
+		FILE* f = fopen((root + "hashtable.dat").c_str(), "w");
+		for (auto& file : hashes)
+		{
+			char line[MAX_PATH * 2];
+			sprintf(line, "%s %I64u\n", file.first.c_str(), file.second);
+			fwrite(line, strlen(line), 1, f);
+		}
+		fclose(f);
 	}
 }
 int main(int argc, char **argv)
@@ -1521,20 +1550,20 @@ int main(int argc, char **argv)
 		shader_language = GLSL;
 	}
 
-	auto processFile = [=](const char* in_filename)
+	auto processFile = [=](const char* full_filename, const char* filename, std::map<std::string, size_t>& hashes)
 	{
 		Error res = INVALID_INPUT;
-		std::string _name(in_filename);
+		std::string _name(full_filename);
 		int n = _name.rfind('.');
 		if (n == -1)
 			return res;
 		std::string _ext = _name.substr(n + 1);
 		if (_ext != "pipeline")
 			return  res;
-		FILE* file = fopen(in_filename, "rb");
+		FILE* file = fopen(full_filename, "rb");
 		if (file == nullptr)
 		{
-			printf("Error: Can't open \"%s\"\n", in_filename);
+			printf("Error: Can't open \"%s\"\n", full_filename);
 			return FILE_NOT_FOUND;
 		}
 
@@ -1542,11 +1571,17 @@ int main(int argc, char **argv)
 		fseek(file, 0, SEEK_END);
 		long size = ftell(file);
 		fseek(file, 0, SEEK_SET);
-
 		char* str = new char[size + 1];
 		fread(str, 1, size, file);
 		str[size] = '\0';
 		fclose(file);
+		size_t hash = std::hash<std::string>{}(std::string(str));
+		auto it = hashes.find(filename);
+		if (it != hashes.end())
+		{
+			if (it->second == hash)
+				return SUCCESS;
+		}
 
 		char* root_sig = strstr(str, "[Rootsig]");
 
@@ -1585,20 +1620,20 @@ int main(int argc, char **argv)
 		char name[MAX_PATH];
 		char path[MAX_PATH]; path[0] = 0;
 
-		const char* last_slash = strrchr(in_filename, '\\');
+		const char* last_slash = strrchr(full_filename, '\\');
 
-		strcpy_s(name, last_slash ? last_slash + 1 : in_filename);
+		strcpy_s(name, last_slash ? last_slash + 1 : full_filename);
 		if (last_slash)
 		{
-			strncpy(path, in_filename, last_slash + 1 - in_filename);
-			path[last_slash + 1 - in_filename] = 0;
+			strncpy(path, full_filename, last_slash + 1 - full_filename);
+			path[last_slash + 1 - full_filename] = 0;
 		}
 		char* ext = strchr(name, '.');
 		if (ext)
 			*ext = '\0';
 
 		char out_filename_cpp[MAX_PATH];
-		sprintf_s(out_filename_cpp, "%s.h", in_filename);
+		sprintf_s(out_filename_cpp, "%s.h", full_filename);
 
 		file = fopen(out_filename_cpp, "wb");
 		if (file == nullptr)
@@ -1619,7 +1654,7 @@ int main(int argc, char **argv)
 				goto quit;
 			}
 		}
-		res = SUCCESS;
+
 		if (mutes)
 		{
 			Error error = ParsePermutations(file, mutes, m_permutations);
@@ -1637,7 +1672,7 @@ int main(int argc, char **argv)
 			const int ts_count = (int)task_shaders.size();
 			for (int i = 0; i < ts_count; i++)
 			{
-				if (!CompileShader(file, path, compiler, options, task_shaders[i], shader_language, api, debug, header, root_header, in_filename, ts_profile, it_mute.first.c_str(), it_mute.second, m_bindings))
+				if (!CompileShader(file, path, compiler, options, task_shaders[i], shader_language, api, debug, header, root_header, full_filename, ts_profile, it_mute.first.c_str(), it_mute.second, m_bindings))
 				{
 					res = COMPILE_ERROR;
 					goto quit;
@@ -1647,7 +1682,7 @@ int main(int argc, char **argv)
 			const int ms_count = (int)mesh_shaders.size();
 			for (int i = 0; i < ms_count; i++)
 			{
-				if (!CompileShader(file, path, compiler, options, mesh_shaders[i], shader_language, api, debug, header, root_header, in_filename, ms_profile, it_mute.first.c_str(), it_mute.second, m_bindings))
+				if (!CompileShader(file, path, compiler, options, mesh_shaders[i], shader_language, api, debug, header, root_header, full_filename, ms_profile, it_mute.first.c_str(), it_mute.second, m_bindings))
 				{
 					res = COMPILE_ERROR;
 					goto quit;
@@ -1657,7 +1692,7 @@ int main(int argc, char **argv)
 			const int vs_count = (int)vertex_shaders.size();
 			for (int i = 0; i < vs_count; i++)
 			{
-				if (!CompileShader(file, path, compiler, options, vertex_shaders[i], shader_language, api, debug, header, root_header, in_filename, vs_profile, it_mute.first.c_str(), it_mute.second, m_bindings))
+				if (!CompileShader(file, path, compiler, options, vertex_shaders[i], shader_language, api, debug, header, root_header, full_filename, vs_profile, it_mute.first.c_str(), it_mute.second, m_bindings))
 				{
 					res = COMPILE_ERROR;
 					goto quit;
@@ -1667,7 +1702,7 @@ int main(int argc, char **argv)
 			const int ps_count = (int)pixel_shaders.size();
 			for (int i = 0; i < ps_count; i++)
 			{
-				if (!CompileShader(file, path, compiler, options, pixel_shaders[i], shader_language, api, debug, header, root_header, in_filename, ps_profile, it_mute.first.c_str(), it_mute.second, m_bindings))
+				if (!CompileShader(file, path, compiler, options, pixel_shaders[i], shader_language, api, debug, header, root_header, full_filename, ps_profile, it_mute.first.c_str(), it_mute.second, m_bindings))
 				{
 					res = COMPILE_ERROR;
 					goto quit;
@@ -1677,7 +1712,7 @@ int main(int argc, char **argv)
 			const int cs_count = (int)compute_shaders.size();
 			for (int i = 0; i < cs_count; i++)
 			{
-				if (!CompileShader(file, path, compiler, options, compute_shaders[i], shader_language, api, debug, header, root_header, in_filename, cs_profile, it_mute.first.c_str(), it_mute.second, m_bindings))
+				if (!CompileShader(file, path, compiler, options, compute_shaders[i], shader_language, api, debug, header, root_header, full_filename, cs_profile, it_mute.first.c_str(), it_mute.second, m_bindings))
 				{
 					res = COMPILE_ERROR;
 					goto quit;
@@ -1686,12 +1721,16 @@ int main(int argc, char **argv)
 		}
 
 	quit:
-
+		if (res == SUCCESS)
+		{
+			hashes[filename] = hash;
+		}
 		fprintf(file, "\n}; // namespace N%s\n", name);
 		fclose(file);
 
 		delete[] root_header;
 		delete[] str;
+		return res;
 	};
 	char path[512];
 	GetModuleFileName(NULL, path, 512);
