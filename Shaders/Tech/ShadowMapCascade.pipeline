@@ -31,6 +31,12 @@ struct PixelIn
 	float3 color   : Color;
 	float3 normal  : Normal;
 };
+[Permutations]
+PERMUTATIONS_BEGIN
+	MUTE MainPass
+	MUTE ShadowPass SHADOWPASS
+PERMUTATIONS_END
+
 [Rootsig]
 ROOT_BEGIN
 	ST_BEGIN Samplers
@@ -45,7 +51,7 @@ ROOT_BEGIN
 		TEXTURE Texture2D ModelTexture;
 	RT_END
 ROOT_END
-[Vertex: VSShadowPass]
+[Vertex: VS]
 
 void main(VertexIn vert, out PixelIn res) 
 {
@@ -57,31 +63,7 @@ void main(VertexIn vert, out PixelIn res)
 	res.posH = mul(ViewportConst.projection, float4(res.posV, 1.0f));
 }
 
-[Vertex: VSMainPass]
-
-void main(VertexIn vert, out PixelIn res) 
-{
-	res.color = vert.color;
-	res.normal = vert.normal;
-	res.uv = vert.uv;
-	res.posW = mul(ModelConst.model, float4(vert.pos, 1.0f)).xyz;
-	res.posV = mul(ViewportConst.view, float4(res.posW, 1.0f)).xyz;
-	res.posH = mul(ViewportConst.projection, float4(res.posV, 1.0f));
-}
-
-[Pixel: PSShadowPass]
-#define ambient 0.3
-
-void main(PixelIn pix, out float4 outFragColor: SV_TARGET)
-{
-	float4 color = ModelTexture.Sample(ColorSampler, pix.uv);
-	if(color.a < 0.5)
-	{
-		clip(-1);
-	}
-	outFragColor.rgba = float4(0,0,0,0);
-} 
-[Pixel: PSMainPass]
+[Pixel: PS]
 #define ambient 0.3
 #define PCF_step 1.0f/4096
 float SamplePCF(float4 shadowPos, int cascade)
@@ -100,13 +82,13 @@ float SamplePCF(float4 shadowPos, int cascade)
 void main(PixelIn pix, out float4 outFragColor: SV_TARGET)
 {
 	float4 color = ModelTexture.Sample(ColorSampler, pix.uv);
-
 	
 	if(color.a < 0.5)
 	{
 		clip(-1);
 	}
-// Directional light
+#ifndef SHADOWPASS
+	// Directional light
 	float3 N = normalize(pix.normal);
 	float3 L = normalize(-ViewportConst.lightDir);
 	float3 H = normalize(L + pix.posV);
@@ -123,4 +105,5 @@ void main(PixelIn pix, out float4 outFragColor: SV_TARGET)
 	float3 lightColor = float3(1.0f,1.0f,1.0f);
 	outFragColor.rgb = max(lightColor * (diffuse * color.rgb), float3(0.0f, 0.0f, 0.0f));
 	outFragColor.a = color.a;
+#endif
 } 

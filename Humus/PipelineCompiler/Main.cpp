@@ -831,7 +831,48 @@ static void ParseTypeAndName(SItem& item, Tokenizer& tokenizer)
 	item.m_Type = type_and_name;
 	item.m_Name = name;
 }
+Error ParsePermutations(FILE* file,  char* source, std::map<std::string,std::vector<std::string>>& mutes)
+{
+	char* begin = strstr(source, "PERMUTATIONS_BEGIN");
+	if (begin == nullptr)
+		return SYNTAX_ERROR;
 
+	char* footer = strstr(begin, "PERMUTATIONS_END");
+	if (footer == nullptr)
+		return SYNTAX_ERROR;
+	footer += 16;
+
+	size_t header_size = begin - source;
+
+	*begin = '\0';
+
+	Tokenizer tokenizer(2);
+	tokenizer.SetString(begin + 18);
+
+	bool read_mute_name = false;
+	std::string curName;
+	char* tok = tokenizer.Next();
+	while (tok && strcmp(tok, "PERMUTATIONS_END") != 0)
+	{
+		if (!strcmp(tok, "MUTE"))
+		{
+			read_mute_name = true;
+			tok = tokenizer.Next();
+			continue;
+		}
+		if (read_mute_name)
+		{
+			read_mute_name = false;
+			curName = tok;
+			mutes.insert(std::map<std::string, std::vector<std::string>>::value_type(curName, {}));
+			tok = tokenizer.Next();
+			continue;
+		}
+		mutes[curName].push_back(tok);
+		tok = tokenizer.Next();
+	}
+	return SUCCESS;
+}
 Error ParseRootSig(FILE* file, ShaderLanguage shader_language, GraphicsAPI api, char*& hlsl_header, char* root_sig, std::map<std::string, std::pair<uint32_t, uint32_t>>& bindings)
 {
 	char* begin = strstr(root_sig, "ROOT_BEGIN");
@@ -1163,12 +1204,12 @@ bool Patch( uint32_t* output, size_t size, std::map<std::string, std::pair<uint3
 		}
 	}
 }
-bool CompileShader(FILE* file, const char* path,const char* external_compiler, const char* options, const SShaderSource& source, ShaderLanguage shader_language, GraphicsAPI api, const bool debug, const char* header, const char* root_header, const char* filename, const char *profile, std::map<std::string, std::pair<uint32_t, uint32_t>> const& bindings)
+bool CompileShader(FILE* file, const char* path,const char* external_compiler, const char* options, const SShaderSource& source, ShaderLanguage shader_language, GraphicsAPI api, const bool debug, const char* header, const char* root_header, const char* filename, const char *profile, const char* perm_name, std::vector<std::string>& defines, std::map<std::string, std::pair<uint32_t, uint32_t>> const& bindings)
 {
 	const int num_shaders = (int) source.m_Names.size();
 	for (int sh = 0; sh < num_shaders; sh++)
 	{
-		const char* name = source.m_Names[sh];
+		std::string name = std::string(source.m_Names[sh]) + perm_name;
 
 		std::string shader;
 		if (shader_language == GLSL)
@@ -1178,8 +1219,14 @@ bool CompileShader(FILE* file, const char* path,const char* external_compiler, c
 		}
 		shader += header;
 		shader += root_header;
+		for (auto& perm_def : defines)
+		{
+			shader += "#define ";
+			shader += perm_def;
+		}
+		shader += "\n";
 		shader += "#define ";
-		shader += name;
+		shader += name.c_str();
 		shader += "\n#line " + std::to_string(source.m_Line) + "\n";
 		shader += source.m_Code;
 
@@ -1189,10 +1236,10 @@ bool CompileShader(FILE* file, const char* path,const char* external_compiler, c
 			DWORD process_id = GetCurrentProcessId();
 
 			char temp_src[128];
-			sprintf_s(temp_src, "%s.\\_temp_shader_%s_%d_%d.txt",path, name, sh, process_id);
+			sprintf_s(temp_src, "%s.\\_temp_shader_%s_%d_%d.txt",path, name.c_str(), sh, process_id);
 
 			char temp_dst[128];
-			sprintf_s(temp_dst, "%s.\\_temp_blob_%s_%d_%d.blb",path, name, sh, process_id);
+			sprintf_s(temp_dst, "%s.\\_temp_blob_%s_%d_%d.blb",path, name.c_str(), sh, process_id);
 
 			WriteFile(temp_src, shader.c_str(), shader.length());
 
@@ -1232,7 +1279,7 @@ bool CompileShader(FILE* file, const char* path,const char* external_compiler, c
 					Patch((uint32_t*)data, size, bindings);
 				}
 
-				WriteD3DBlob(file, data, size, name);
+				WriteD3DBlob(file, data, size, name.c_str());
 				delete [] data;
 			}
 
@@ -1271,7 +1318,7 @@ bool CompileShader(FILE* file, const char* path,const char* external_compiler, c
 
 			if (shader_blob)
 			{
-				WriteD3DBlob(file, shader_blob->GetBufferPointer(), shader_blob->GetBufferSize(), name);
+				WriteD3DBlob(file, shader_blob->GetBufferPointer(), shader_blob->GetBufferSize(), name.c_str());
 				shader_blob->Release();
 			}
 
@@ -1521,6 +1568,12 @@ int main(int argc, char **argv)
 			root_sig += 9;
 		}
 
+		char* mutes = strstr(str, "[Permutations]");
+		if (mutes)
+		{
+			*mutes = '\0';
+			mutes += 14;
+		}
 		PrepareShaders(task_shaders);
 		PrepareShaders(mesh_shaders);
 		PrepareShaders(vertex_shaders);
@@ -1554,7 +1607,7 @@ int main(int argc, char **argv)
 		fprintf(file, "#pragma once\n\nnamespace N%s {\n", name);
 
 		char* root_header = nullptr;
-
+		std::map<std::string, std::vector<std::string>> m_permutations;
 		std::map<std::string, std::pair<uint32_t, uint32_t>> m_bindings;
 		res = SUCCESS;
 		if (root_sig)
@@ -1566,54 +1619,69 @@ int main(int argc, char **argv)
 				goto quit;
 			}
 		}
-
-		const int ts_count = (int)task_shaders.size();
-		for (int i = 0; i < ts_count; i++)
+		res = SUCCESS;
+		if (mutes)
 		{
-			if (!CompileShader(file, path, compiler, options, task_shaders[i], shader_language, api, debug, header, root_header, in_filename, ts_profile, m_bindings))
+			Error error = ParsePermutations(file, mutes, m_permutations);
+			if (error)
 			{
-				res = COMPILE_ERROR;
+				res = error;
 				goto quit;
 			}
 		}
+		if (!m_permutations.size())
+			m_permutations.insert(std::map < std::string, std::vector<std::string>>::value_type("",{}));
 
-		const int ms_count = (int)mesh_shaders.size();
-		for (int i = 0; i < ms_count; i++)
+		for (auto& it_mute : m_permutations)
 		{
-			if (!CompileShader(file, path, compiler, options, mesh_shaders[i], shader_language, api, debug, header, root_header, in_filename, ms_profile, m_bindings))
+			const int ts_count = (int)task_shaders.size();
+			for (int i = 0; i < ts_count; i++)
 			{
-				res = COMPILE_ERROR;
-				goto quit;
+				if (!CompileShader(file, path, compiler, options, task_shaders[i], shader_language, api, debug, header, root_header, in_filename, ts_profile, it_mute.first.c_str(), it_mute.second, m_bindings))
+				{
+					res = COMPILE_ERROR;
+					goto quit;
+				}
 			}
-		}
 
-		const int vs_count = (int)vertex_shaders.size();
-		for (int i = 0; i < vs_count; i++)
-		{
-			if (!CompileShader(file, path, compiler, options, vertex_shaders[i], shader_language, api, debug, header, root_header, in_filename, vs_profile, m_bindings))
+			const int ms_count = (int)mesh_shaders.size();
+			for (int i = 0; i < ms_count; i++)
 			{
-				res = COMPILE_ERROR;
-				goto quit;
+				if (!CompileShader(file, path, compiler, options, mesh_shaders[i], shader_language, api, debug, header, root_header, in_filename, ms_profile, it_mute.first.c_str(), it_mute.second, m_bindings))
+				{
+					res = COMPILE_ERROR;
+					goto quit;
+				}
 			}
-		}
 
-		const int ps_count = (int)pixel_shaders.size();
-		for (int i = 0; i < ps_count; i++)
-		{
-			if (!CompileShader(file, path, compiler, options, pixel_shaders[i], shader_language, api, debug, header, root_header, in_filename, ps_profile, m_bindings))
+			const int vs_count = (int)vertex_shaders.size();
+			for (int i = 0; i < vs_count; i++)
 			{
-				res = COMPILE_ERROR;
-				goto quit;
+				if (!CompileShader(file, path, compiler, options, vertex_shaders[i], shader_language, api, debug, header, root_header, in_filename, vs_profile, it_mute.first.c_str(), it_mute.second, m_bindings))
+				{
+					res = COMPILE_ERROR;
+					goto quit;
+				}
 			}
-		}
 
-		const int cs_count = (int)compute_shaders.size();
-		for (int i = 0; i < cs_count; i++)
-		{
-			if (!CompileShader(file, path, compiler, options, compute_shaders[i], shader_language, api, debug, header, root_header, in_filename, cs_profile, m_bindings))
+			const int ps_count = (int)pixel_shaders.size();
+			for (int i = 0; i < ps_count; i++)
 			{
-				res = COMPILE_ERROR;
-				goto quit;
+				if (!CompileShader(file, path, compiler, options, pixel_shaders[i], shader_language, api, debug, header, root_header, in_filename, ps_profile, it_mute.first.c_str(), it_mute.second, m_bindings))
+				{
+					res = COMPILE_ERROR;
+					goto quit;
+				}
+			}
+
+			const int cs_count = (int)compute_shaders.size();
+			for (int i = 0; i < cs_count; i++)
+			{
+				if (!CompileShader(file, path, compiler, options, compute_shaders[i], shader_language, api, debug, header, root_header, in_filename, cs_profile, it_mute.first.c_str(), it_mute.second, m_bindings))
+				{
+					res = COMPILE_ERROR;
+					goto quit;
+				}
 			}
 		}
 
