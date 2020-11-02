@@ -100,6 +100,8 @@ public:
 		tb_params.m_Format = IMGFMT_D16;
 		tb_params.m_MSAASampleCount = 1;
 		tb_params.m_DepthTarget = true;
+		tb_params.m_ShaderResource = true;
+
 		tb_params.m_Slices = SHADOW_MAP_CASCADE_COUNT;
 		m_ShadowMap = CreateTexture(m_Device, tb_params);
 
