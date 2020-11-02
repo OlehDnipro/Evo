@@ -105,7 +105,7 @@ public:
 		tb_params.m_Slices = SHADOW_MAP_CASCADE_COUNT;
 		m_ShadowMap = CreateTexture(m_Device, tb_params);
 
-		m_RenderPassShadow = CreateRenderPass(m_Device, IMGFMT_INVALID, IMGFMT_D16, CLEAR_DEPTH, 0);
+		m_RenderPassShadow = CreateRenderPass(m_Device, IMGFMT_INVALID, IMGFMT_D16, CLEAR_DEPTH, 1);
 		for (int i = 0; i < SHADOW_MAP_CASCADE_COUNT; i++)
 		{
 			m_ShadowSetup[i] = CreateRenderSetup(m_Device, m_RenderPassShadow, nullptr, 0, m_ShadowMap, nullptr, i);
