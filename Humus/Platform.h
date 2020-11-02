@@ -122,8 +122,8 @@ template <typename T, size_t N> T (&ArraySizeHelper(T (&arr)[N]))[N];
 
 #include <malloc.h>
 // These must be force_inline so that the allocation happens in the caller's stack frame
-template <typename T> force_inline T* StackAlloc(size_t N) { return (T*) alloca(N * sizeof(T)); }
-template <typename T> force_inline T* StackAllocZeroed(size_t N) { void* mem = alloca(N * sizeof(T)); memset(mem, 0, N * sizeof(T)); return (T*) mem; }
+template <typename T> force_inline T* StackAlloc(size_t N) { return (T*) malloc(N * sizeof(T)); }
+template <typename T> force_inline T* StackAllocZeroed(size_t N) { void* mem = malloc(N * sizeof(T)); memset(mem, 0, N * sizeof(T)); return (T*) mem; }
 
 
 // Utility functions
