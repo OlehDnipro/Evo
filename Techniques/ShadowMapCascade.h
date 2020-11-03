@@ -259,7 +259,5 @@ private:
 	CShadowParameterProvider m_ShadowProvider;
 
 	SPerFrame m_perFrame;
-	SamplerTable m_SamplerTable;
-	ResourceTable m_ResourceTable;
-	
+	SamplerTable m_SamplerTable;	
 };

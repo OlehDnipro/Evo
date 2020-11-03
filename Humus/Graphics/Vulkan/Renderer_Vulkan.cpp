@@ -88,7 +88,7 @@ struct SDevice
 	VkCommandBuffer m_CommandBuffers[BUFFER_FRAMES];
 	SlicedBuffer m_Constants;
 
-	VkDescriptorPool m_DescriptorPool;
+	VkDescriptorPool m_DescriptorPool, m_GrowDescriptorPool;
 
 	SCommandListAllocator m_CommandListAllocators[BUFFER_FRAMES];
 
@@ -216,6 +216,7 @@ struct STexture
 struct SResourceTable
 {
 	VkDescriptorSet m_DescriptorSet;
+	VkDescriptorPool m_Pool;
 };
 
 struct SRenderPass
@@ -230,6 +231,7 @@ struct SSamplerTable
 	VkDescriptorSet m_DescriptorSet;
 	uint m_Count;
 	VkSampler m_Samplers[1];
+	VkDescriptorPool m_Pool;
 };
 
 struct SRenderSetup
@@ -880,7 +882,9 @@ Device CreateDevice(DeviceParams& params)
 	desc_pool_create_info.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
 	res = vkCreateDescriptorPool(vk_device, &desc_pool_create_info, VK_NULL_HANDLE, &device->m_DescriptorPool);
 	ASSERT(res == VK_SUCCESS);
-
+	desc_pool_create_info.maxSets = 4096;
+	res = vkCreateDescriptorPool(vk_device, &desc_pool_create_info, VK_NULL_HANDLE, &device->m_GrowDescriptorPool);
+	ASSERT(res == VK_SUCCESS);
 
 	for (uint i = 0; i < BUFFER_FRAMES; i++)
 	{
@@ -922,6 +926,8 @@ void DestroyDevice(Device& device)
 	DestroyBlendState(device, device->m_DefaultBlendState);
 
 	vkDestroyDescriptorPool(device->m_Device, device->m_DescriptorPool, VK_NULL_HANDLE);
+
+	vkDestroyDescriptorPool(device->m_Device, device->m_GrowDescriptorPool, VK_NULL_HANDLE);
 
 	DestroyBackBufferSetups(device);
 
@@ -1328,7 +1334,7 @@ void UpdateResourceTable(Device device, RootSignature root, uint32 slot, Resourc
 //	ASSERT(binding == root_slot.m_Size && element == 0);
 }
 
-ResourceTable CreateResourceTable(Device device, RootSignature root, uint32 slot, const SResourceDesc* resources, uint count)
+ResourceTable CreateResourceTable(Device device, RootSignature root, uint32 slot, const SResourceDesc* resources, uint count, bool onframe)
 {
 	ASSERT(slot < root->m_SlotCount);
 
@@ -1338,14 +1344,15 @@ ResourceTable CreateResourceTable(Device device, RootSignature root, uint32 slot
 
 	VkDescriptorSetAllocateInfo info = {};
 	info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-	info.descriptorPool = device->m_DescriptorPool;
+	info.descriptorPool = onframe? device->m_GrowDescriptorPool:device->m_DescriptorPool;
 	info.descriptorSetCount = 1;
 	info.pSetLayouts = &root->m_Slots[slot].m_DescriptorSetLayout;
 
 	VkResult res = vkAllocateDescriptorSets(device->m_Device, &info, &descriptor_set);
 	ASSERT(res == VK_SUCCESS);
 	ResourceTable rt = new SResourceTable();
-	rt->m_DescriptorSet = descriptor_set;
+	rt->m_DescriptorSet = descriptor_set;	
+	rt->m_Pool = info.descriptorPool;
 
 	if (resources)
 	{
@@ -1358,6 +1365,8 @@ void DestroyResourceTable(Device device, ResourceTable& table)
 {
 	if (table)
 	{
+		if (table->m_Pool != device->m_DescriptorPool)
+			return;
 		vkFreeDescriptorSets(device->m_Device, device->m_DescriptorPool, 1, &table->m_DescriptorSet);
 
 		delete table;
@@ -1365,7 +1374,7 @@ void DestroyResourceTable(Device device, ResourceTable& table)
 	}
 }
 
-SamplerTable CreateSamplerTable(Device device, RootSignature root, uint32 slot, const SSamplerDesc* sampler_descs, uint count)
+SamplerTable CreateSamplerTable(Device device, RootSignature root, uint32 slot, const SSamplerDesc* sampler_descs, uint count, bool onframe)
 {
 	ASSERT(slot < root->m_SlotCount);
 	ASSERT(count == root->m_Slots[slot].m_Size);
@@ -1374,7 +1383,7 @@ SamplerTable CreateSamplerTable(Device device, RootSignature root, uint32 slot, 
 
 	VkDescriptorSetAllocateInfo alloc_info = {};
 	alloc_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-	alloc_info.descriptorPool = device->m_DescriptorPool;
+	alloc_info.descriptorPool = onframe? device->m_GrowDescriptorPool:device->m_DescriptorPool;
 	alloc_info.descriptorSetCount = 1;
 	alloc_info.pSetLayouts = &root->m_Slots[slot].m_DescriptorSetLayout;
 
@@ -1389,7 +1398,7 @@ SamplerTable CreateSamplerTable(Device device, RootSignature root, uint32 slot, 
 	SamplerTable table = new(mem) SSamplerTable();
 	table->m_DescriptorSet = descriptor_set;
 	table->m_Count  = count;
-
+	table->m_Pool = alloc_info.descriptorPool;
 
 	VkDescriptorImageInfo* image_infos = (VkDescriptorImageInfo*) alloca(count * sizeof(VkDescriptorImageInfo));
 	memset(image_infos, 0, count * sizeof(VkDescriptorImageInfo));
@@ -1434,11 +1443,17 @@ SamplerTable CreateSamplerTable(Device device, RootSignature root, uint32 slot, 
 
 	return table;
 }
+void ResetDescriptorPool(Device device)
+{
+	vkResetDescriptorPool(device->m_Device, device->m_GrowDescriptorPool, 0);
+}
 
 void DestroySamplerTable(Device device, SamplerTable& table)
 {
 	if (table)
 	{
+		if (table->m_Pool != device->m_DescriptorPool)
+			return;
 		for (uint i = 0; i < table->m_Count; i++)
 		{
 			vkDestroySampler(device->m_Device, table->m_Samplers[i], VK_NULL_HANDLE);
@@ -2458,6 +2473,7 @@ void SubmitContexts(Device device, uint count, SContext** context)
 
 	VkResult res = vkQueueSubmit(device->m_GraphicsQueue, 1, &submit_info, device->m_WaitFences[device->m_CurrentBuffer]);
 	ASSERT(res == VK_SUCCESS);
+	ResetDescriptorPool(device);
 }
 
 void Finish(Device device)
