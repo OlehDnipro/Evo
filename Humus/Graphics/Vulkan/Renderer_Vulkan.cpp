@@ -548,7 +548,7 @@ Device CreateDevice(DeviceParams& params)
 	{
 		VK_KHR_SURFACE_EXTENSION_NAME,
 		VK_KHR_WIN32_SURFACE_EXTENSION_NAME,
-#ifdef DEBUG
+#ifdef USE_DEBUG_UTILS
 		VK_EXT_DEBUG_UTILS_EXTENSION_NAME,
 //		VK_EXT_DEBUG_REPORT_EXTENSION_NAME,
 #endif
@@ -561,10 +561,18 @@ Device CreateDevice(DeviceParams& params)
 	instance_create_info.enabledExtensionCount = elementsof(instance_extensions);
 	instance_create_info.ppEnabledExtensionNames = instance_extensions;
 	
-#ifdef DEBUG
+#if defined(USE_DEBUG_UTILS) && defined(USE_DEBUG_MARKERS)
 	// Enable validation layer
 	static const char* validation_layers[] = { "VK_LAYER_LUNARG_standard_validation" , "VK_LAYER_RENDERDOC_Capture" };
 	instance_create_info.enabledLayerCount = 2;
+	instance_create_info.ppEnabledLayerNames = validation_layers;
+#elif defined (USE_DEBUG_UTILS)
+	static const char* validation_layers[] = { "VK_LAYER_LUNARG_standard_validation" };
+	instance_create_info.enabledLayerCount = 1;
+	instance_create_info.ppEnabledLayerNames = validation_layers;
+#elif defined(USE_DEBUG_MARKERS)
+	static const char* validation_layers[] = { "VK_LAYER_RENDERDOC_Capture" };
+	instance_create_info.enabledLayerCount = 1;
 	instance_create_info.ppEnabledLayerNames = validation_layers;
 #endif
 
