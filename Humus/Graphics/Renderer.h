@@ -343,8 +343,8 @@ struct SResourceDesc
 	ViewDesc m_Desc = {};
 };
 void UpdateResourceTable(Device device, RootSignature root, uint32 slot, ResourceTable table, const SResourceDesc* resources, uint offset, uint count);
-no_inline ResourceTable CreateResourceTable(Device device, RootSignature root, uint32 slot, const SResourceDesc* resources, uint count, bool onframe = false);
-template<int N> force_inline ResourceTable CreateResourceTable(Device device, RootSignature root, uint32 slot, const SResourceDesc(&resources)[N], bool onframe = false) { return CreateResourceTable(device, root, slot, resources, N, onframe); }
+no_inline ResourceTable CreateResourceTable(Device device, RootSignature root, uint32 slot, const SResourceDesc* resources, uint count, Context onframe = nullptr);
+template<int N> force_inline ResourceTable CreateResourceTable(Device device, RootSignature root, uint32 slot, const SResourceDesc(&resources)[N], Context onframe = nullptr) { return CreateResourceTable(device, root, slot, resources, N, onframe); }
 void DestroyResourceTable(Device device, ResourceTable& table);
 
 struct SSamplerDesc
@@ -356,8 +356,8 @@ struct SSamplerDesc
 	AddressMode   AddressModeW;
 	EComparisonFunc Comparison;
 };
-no_inline SamplerTable CreateSamplerTable(Device device, RootSignature root, uint32 slot, const SSamplerDesc* sampler_descs, uint count, bool onframe = false);
-template<int N> force_inline SamplerTable CreateSamplerTable(Device device, RootSignature root, uint32 slot, const SSamplerDesc(&samplers)[N], bool onframe = false) { return CreateSamplerTable(device, root, slot, samplers, N, onframe); }
+no_inline SamplerTable CreateSamplerTable(Device device, RootSignature root, uint32 slot, const SSamplerDesc* sampler_descs, uint count, Context onframe = nullptr);
+template<int N> force_inline SamplerTable CreateSamplerTable(Device device, RootSignature root, uint32 slot, const SSamplerDesc(&samplers)[N], Context onframe = nullptr) { return CreateSamplerTable(device, root, slot, samplers, N, onframe); }
 void DestroySamplerTable(Device device, SamplerTable& table);
 void ResetDescriptorPool(Device device);
 enum RenderPassFlags

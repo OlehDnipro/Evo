@@ -360,7 +360,7 @@ void ShadowMapCascade::Draw(Context context, int cascade)
 	{
 		providers[2] = m_ObjectInstances[i]->GetModelProvider();
 		GatherParameters(providers.data() +2 , 1);
-		ResourceTable rt = CreateResourceTable(GetDevice(context), m_RootSig, NShadowMapCascade::Resources, nullptr, 0, true);
+		ResourceTable rt = CreateResourceTable(GetDevice(context), m_RootSig, NShadowMapCascade::Resources, nullptr, 0, context);
 
 		UpdateResourceTable(GetDevice(context), m_RootSig, NShadowMapCascade::Resources, rt,
 			m_TableUpdates[NShadowMapCascade::Resources].m_Descriptors.data(), 0, 5);
