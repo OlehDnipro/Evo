@@ -29,10 +29,12 @@
 
 #include <stdio.h>
 
-#ifdef DEBUG
+
+//#ifdef DEBUG
 //#define USE_DEBUG_MARKERS
 #define USE_DEBUG_UTILS
-#endif
+//#endif
+
 struct SlicedBuffer
 {
 	Buffer	m_Buffer;
@@ -89,6 +91,7 @@ struct SDevice
 	SlicedBuffer m_Constants;
 
 	VkDescriptorPool m_DescriptorPool;
+    VkDescriptorPool m_GrowDescriptorPools[BUFFER_FRAMES];
 
 	SCommandListAllocator m_CommandListAllocators[BUFFER_FRAMES];
 
@@ -653,7 +656,7 @@ Device CreateDevice(DeviceParams& params)
 			&VulkanCallback,
 			nullptr
 		};
-		VkResult hResult = m_fnCreateDebugUtilsMessengerEXT(instance, &debugUtilsMessangerCreateInfo, nullptr, &debugMessenger);
+///		VkResult hResult = m_fnCreateDebugUtilsMessengerEXT(instance, &debugUtilsMessangerCreateInfo, nullptr, &debugMessenger);
 	}
 #endif
 	VkPhysicalDeviceFeatures2 enabled_features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2 };
@@ -894,6 +897,10 @@ Device CreateDevice(DeviceParams& params)
 
 	for (uint i = 0; i < BUFFER_FRAMES; i++)
 	{
+        desc_pool_create_info.maxSets = 4096;
+        desc_pool_create_info.flags = 0;
+        res = vkCreateDescriptorPool(vk_device, &desc_pool_create_info, VK_NULL_HANDLE, &device->m_GrowDescriptorPools[i]);
+        ASSERT(res == VK_SUCCESS);
 		device->m_CommandListAllocators[i].Init(device);
 	}
 
@@ -932,7 +939,10 @@ void DestroyDevice(Device& device)
 	DestroyBlendState(device, device->m_DefaultBlendState);
 
 	vkDestroyDescriptorPool(device->m_Device, device->m_DescriptorPool, VK_NULL_HANDLE);
-
+    for (uint i = 0; i < BUFFER_FRAMES; i++)
+    {
+        vkDestroyDescriptorPool(device->m_Device, device->m_GrowDescriptorPools[i], VK_NULL_HANDLE);
+    }
 	DestroyBackBufferSetups(device);
 
 	DestroyRenderPass(device, device->m_BackBufferRenderPass);
@@ -1132,22 +1142,6 @@ Context CreateContext(Device device, bool deferred)
 
 	context->m_Device = device;
 
-	VkDescriptorPoolSize pool_sizes[] =
-	{
-		{ VK_DESCRIPTOR_TYPE_SAMPLER, 16 },
-		{ VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 256 },
-		{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, 64 },
-	};
-
-	VkDescriptorPoolCreateInfo desc_pool_create_info = {};
-	desc_pool_create_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-	desc_pool_create_info.poolSizeCount = elementsof(pool_sizes);
-	desc_pool_create_info.pPoolSizes = pool_sizes;
-	desc_pool_create_info.maxSets = 4096;
-	desc_pool_create_info.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
-	VkResult res = vkCreateDescriptorPool(device->m_Device, &desc_pool_create_info, VK_NULL_HANDLE, &context->m_DescriptorPool);
-	ASSERT(res == VK_SUCCESS);
-
 	return context;
 }
 
@@ -1155,7 +1149,6 @@ void DestroyContext(Device device, Context& context)
 {
 	if (!context)
 		return;
-	vkDestroyDescriptorPool(device->m_Device, context->m_DescriptorPool, VK_NULL_HANDLE);
 
 	delete context;
 	context = VK_NULL_HANDLE;
@@ -2426,9 +2419,10 @@ void BeginContext(Context context, uint upload_buffer_size, const char* name, bo
 	ASSERT(res == VK_SUCCESS);
 	res = vkResetFences(device->m_Device, 1, &device->m_WaitFences[device->m_CurrentBuffer]);
 	ASSERT(res == VK_SUCCESS);
-	ResetDescriptorPool(context);
 	// TODO: Use a better allocation strategy
 	context->m_CommandBuffer = device->m_CommandBuffers[device->m_CurrentBuffer];
+    context->m_DescriptorPool = device->m_GrowDescriptorPools[device->m_CurrentBuffer];
+    ResetDescriptorPool(context);
 
 	SCommandListAllocator* allocator = &device->m_CommandListAllocators[device->m_CurrentBuffer];
 	context->m_Allocator = allocator;
