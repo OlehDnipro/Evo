@@ -1399,7 +1399,7 @@ SamplerTable CreateSamplerTable(Device device, RootSignature root, uint32 slot, 
 	ASSERT(res == VK_SUCCESS);
 
 	// Allocate variable size depending on count
-	size_t size = offsetof(SSamplerTable, m_Samplers) + count * sizeof(VkSampler);
+	size_t size = offsetof(SSamplerTable, m_Samplers) + count * sizeof(VkSampler) + sizeof(VkDescriptorPool);
 	void* mem = new ubyte[size];
 	memset(mem, 0, size);
 
