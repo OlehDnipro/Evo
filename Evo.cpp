@@ -167,6 +167,14 @@ public:
 
 	void DrawFrame(Context context, uint buffer_index)
 	{
+        static bool init = false;
+        if (!init)
+        {
+            init = true;
+            Barrier(context, { { m_ShadowMap, EResourceState::RS_COMMON, EResourceState::RS_COMMON} });
+        }
+        else
+            Barrier(context, { { m_ShadowMap, EResourceState::RS_COMMON, EResourceState::RS_RENDER_TARGET} });
 		for (int i = 0; i < SHADOW_MAP_CASCADE_COUNT; i++)
 		{
 			BeginRenderPass(context, "Shadow", m_RenderPassShadow, m_ShadowSetup[i], float4(0, 0, 0, 0));
@@ -175,11 +183,14 @@ public:
 			m_Shadows.Draw(context,i);
 			EndRenderPass(context, m_ShadowSetup[i]);
 		}
+        Barrier(context, { { m_ShadowMap, EResourceState::RS_RENDER_TARGET, EResourceState::RS_COMMON} });
+
 		BeginRenderPass(context, "Backbuffer", m_RenderPassMain, m_RenderSetup[buffer_index], float4(0, 0, 0, 0));
 		m_Shadows.Update(context);
 		m_Shadows.PrepareDraw(m_Device, m_RenderPassMain, ShadowMapCascade::MainPass);
 		m_Shadows.Draw(context);
 		EndRenderPass(context, m_RenderSetup[buffer_index]);
+        Barrier(context, { { GetBackBuffer(GetDevice(),buffer_index), EResourceState::RS_COMMON, EResourceState::RS_PRESENT} });
 	};
 };
 static DemoApp *app = nullptr; // Should come up with something prettier than this
