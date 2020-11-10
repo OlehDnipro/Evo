@@ -31,20 +31,3 @@ class CParameterProviderRegistry
 		static CParameterProviderRegistry* m_pInstance;
 		vector<CParameterProviderLayout*> m_Layouts;
 };
-class IParameterProvider
-{
-public:
-	virtual uint32_t GetLayoutId() = 0;
-	uint8_t* GetBaseParameterPointer() { return &m_pBase; }
-protected:
-	uint8_t m_pBase;
-};
-template<class T>
-class CParameterProviderBase : public IParameterProvider
-{
-protected:
-	static CParameterProviderLayout m_Layout;
-public:
-	uint32_t GetLayoutId() { return m_Layout.GetId(); };
-};
-

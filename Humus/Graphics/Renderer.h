@@ -578,9 +578,9 @@ void SetVertexSetup(Context context, const VertexSetup setup);
 
 uint8* SetVertexBuffer(Context context, uint stream, uint stride, uint count);
 
-uint32 AllocateConstantsSlice(Device device,  uint size);
-Buffer GetConstantBuffer(Device device);
-uint8* GetConstantBufferData(Device device, uint32 offset);
+uint32 AllocateConstantsSlice(Context device,  uint size);
+Buffer GetConstantBuffer(Context device);
+uint8* GetConstantBufferData(Context device, uint32 offset);
 
 void SetRootConstants(Context context, uint slot, const void* data, uint count);
 

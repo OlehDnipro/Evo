@@ -88,10 +88,10 @@ struct SDevice
 
 	VkCommandPool m_CommandPool;
 	VkCommandBuffer m_CommandBuffers[BUFFER_FRAMES];
-	SlicedBuffer m_Constants;
 
 	VkDescriptorPool m_DescriptorPool;
     VkDescriptorPool m_GrowDescriptorPools[BUFFER_FRAMES];
+	SlicedBuffer m_Constants[BUFFER_FRAMES];
 
 	SCommandListAllocator m_CommandListAllocators[BUFFER_FRAMES];
 
@@ -916,12 +916,13 @@ Device CreateDevice(DeviceParams& params)
 
 
 	SBufferParams cb(1024*1024, HEAP_UPLOAD, CONSTANT_BUFFER, "ConstantBuffer");
-	device->m_Constants.m_Buffer = CreateBuffer(device, cb);	
-
-	device->m_Constants.m_Cursor = 0;
-	device->m_Constants.m_Data = VK_NULL_HANDLE;
-	vkMapMemory(device->m_Device, device->m_Constants.m_Buffer->m_Memory, 0, device->m_Constants.m_Buffer->m_Size, 0, (void**)&device->m_Constants.m_Data);
-
+	for (uint i = 0; i < BUFFER_FRAMES; i++)
+	{
+		device->m_Constants[i].m_Buffer = CreateBuffer(device, cb);
+		device->m_Constants[i].m_Cursor = 0;
+		device->m_Constants[i].m_Data = VK_NULL_HANDLE;
+		vkMapMemory(device->m_Device, device->m_Constants[i].m_Buffer->m_Memory, 0, device->m_Constants[i].m_Buffer->m_Size, 0, (void**)&device->m_Constants[i].m_Data);
+	}
 	return device;
 }
 
@@ -942,6 +943,7 @@ void DestroyDevice(Device& device)
     for (uint i = 0; i < BUFFER_FRAMES; i++)
     {
         vkDestroyDescriptorPool(device->m_Device, device->m_GrowDescriptorPools[i], VK_NULL_HANDLE);
+		vkDestroyBuffer(device->m_Device, device->m_Constants[i].m_Buffer->m_Buffer, VK_NULL_HANDLE);
     }
 	DestroyBackBufferSetups(device);
 
@@ -1381,9 +1383,12 @@ void DestroyResourceTable(Device device, ResourceTable& table)
 	if (table)
 	{
 		if (table->m_Pool != device->m_DescriptorPool)
+		{
+			delete table;
+			table = VK_NULL_HANDLE;
 			return;
+		}
 		vkFreeDescriptorSets(device->m_Device, device->m_DescriptorPool, 1, &table->m_DescriptorSet);
-
 		delete table;
 		table = VK_NULL_HANDLE;
 	}
@@ -2272,7 +2277,7 @@ Buffer CreateBuffer(Device device, const SBufferParams& params)
 	VkMemoryRequirements mem_reqs;
 	vkGetBufferMemoryRequirements(device->m_Device, vk_buffer, &mem_reqs);
 
-	uint32 memory_bits = (params.m_HeapType == HEAP_DEFAULT)? VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT : (VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+	uint32 memory_bits = (params.m_HeapType == HEAP_DEFAULT)? VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT : (VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
 
 	VkMemoryAllocateInfo mem_alloc_info = {};
 	mem_alloc_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
@@ -2424,6 +2429,7 @@ void BeginContext(Context context, uint upload_buffer_size, const char* name, bo
 	context->m_CommandBuffer = device->m_CommandBuffers[device->m_CurrentBuffer];
     context->m_DescriptorPool = device->m_GrowDescriptorPools[device->m_CurrentBuffer];
     ResetDescriptorPool(context);
+	device->m_Constants[device->m_CurrentBuffer].m_Cursor = 0;
 
 	SCommandListAllocator* allocator = &device->m_CommandListAllocators[device->m_CurrentBuffer];
 	context->m_Allocator = allocator;
@@ -2734,18 +2740,21 @@ uint8* SetVertexBuffer(Context context, uint stream, uint stride, uint count)
 	return VK_NULL_HANDLE;
 }
 
-uint32 AllocateConstantsSlice(Device device, uint size)
+uint32 AllocateConstantsSlice(Context context, uint size)
 {
-	uint32 offset = AllocateBufferSlice(device, device->m_Constants, size, device->m_UniformBufferAlignment);
+	Device device = GetDevice(context);
+	uint32 offset = AllocateBufferSlice(device, device->m_Constants[device->m_CurrentBuffer], size, device->m_UniformBufferAlignment);
 	return offset;
 }
-Buffer GetConstantBuffer(Device device)
+Buffer GetConstantBuffer(Context context)
 {
-	return device->m_Constants.m_Buffer;
+	Device device = GetDevice(context);
+	return  device->m_Constants[device->m_CurrentBuffer].m_Buffer;
 }
-uint8* GetConstantBufferData(Device device, uint32 offset)
+uint8* GetConstantBufferData(Context context, uint32 offset)
 {
-	return device->m_Constants.m_Data + offset;
+	Device device = GetDevice(context);
+	return device->m_Constants[device->m_CurrentBuffer].m_Data + offset;
 }
 
 void SetRootConstants(Context context, uint slot, const void* data, uint count)
