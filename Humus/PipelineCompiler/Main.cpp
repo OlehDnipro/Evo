@@ -1393,7 +1393,7 @@ void PrepareShaders(const std::vector<SShaderSource>& shaders)
 }
 
 template<class T>
-void ProcessFolder(const char* _root,  T& fileFunctor)
+bool ProcessFolder(const char* _root,  T& fileFunctor)
 {
 	std::string root(_root);
 
@@ -1413,6 +1413,7 @@ void ProcessFolder(const char* _root,  T& fileFunctor)
 		}
 	}
 	bool has_shaders = false;
+	bool has_errors = false;
 	WIN32_FIND_DATAA data;
 	HANDLE first = FindFirstFile((root +"*").c_str(), &data);
 	if (first != INVALID_HANDLE_VALUE)
@@ -1424,13 +1425,17 @@ void ProcessFolder(const char* _root,  T& fileFunctor)
 			{
 				if (name[0] != '.')
 				{
-					ProcessFolder((root + name + "\\").c_str(), fileFunctor);
+					has_errors |= ProcessFolder((root + name + "\\").c_str(), fileFunctor);
 				}
 			}
 			else
 			{
-				if (fileFunctor((root + name).c_str(), name.c_str(), hashes) == SUCCESS)
+				Error result = fileFunctor((root + name).c_str(), name.c_str(), hashes) ;
+				if(result == SUCCESS)
 					has_shaders = true;
+				if (result == COMPILE_ERROR)
+					has_errors = true;
+
 			}
 		} while (FindNextFile(first, &data));
 	}
@@ -1445,6 +1450,7 @@ void ProcessFolder(const char* _root,  T& fileFunctor)
 		}
 		fclose(f);
 	}
+	return has_errors;
 }
 int main(int argc, char **argv)
 {
@@ -1736,6 +1742,9 @@ int main(int argc, char **argv)
 	GetModuleFileName(NULL, path, 512);
 	std::string _path(path);
 	_path = _path.substr(0, _path.rfind('\\') +1);
-	ProcessFolder(_path.c_str(), processFile);
+	if (ProcessFolder(_path.c_str(), processFile))
+	{
+		getchar();
+	}
 	return 0;
 }
