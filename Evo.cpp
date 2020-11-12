@@ -38,6 +38,44 @@
 #endif
 
 #include <stdio.h>
+class CTreeFieldCollection : public IObjectCollection
+{
+public:
+	void Create(Device device)
+	{
+		m_vertexLayout.Init({ VERTEX_COMPONENT_POSITION,
+							VERTEX_COMPONENT_UV,
+							VERTEX_COMPONENT_COLOR,
+							VERTEX_COMPONENT_NORMAL });
+		float4x4 mtx; mtx.identity();
+		m_Objects.resize(3);
+		m_Objects[0].Init(device, m_vertexLayout, "../../models/terrain_simple.dae", "../../Textures/gridlines.dds", 1.0f);
+		m_Objects[1].Init(device, m_vertexLayout, "../../models/oak_trunk.dae", "../../Textures/oak_bark.dds", 2.0f);
+		m_Objects[2].Init(device, m_vertexLayout, "../../models/oak_leafs.dae", "../../Textures/oak_leafs.dds", 2.0f);
+		m_ObjectInstances.resize(11);
+		m_ObjectInstances[0] = new SimpleObjectInstance(m_Objects[0], device, mtx);
+
+		const std::vector<vec3> positions = {
+		vec3(0.0f, 0.0f, 0.0f),
+		vec3(1.25f, -0.25f, 1.25f),
+		vec3(-1.25f, 0.2f, 1.25f),
+		vec3(1.25f, -0.1f, -1.25f),
+		vec3(-1.25f, 0.25f, -1.25f),
+		};
+		for (int i = 1; i < 11; i++)
+		{
+			mtx = translate(positions[(i - 1) / 2]);
+			if (i % 2 == 0)
+			{
+				m_ObjectInstances[i] = new SimpleObjectInstance(m_Objects[1], device, mtx);
+			}
+			else
+			{
+				m_ObjectInstances[i] = new SimpleObjectInstance(m_Objects[2], device, mtx);
+			}
+		}
+	}
+};
 class EvoApp : public DemoApp
 {
 	Texture m_ColorBuffer, m_ShadowMap;
@@ -56,6 +94,7 @@ public:
 	{
 		CreateRenderSetups();
 		m_Shadows.SetShadowMap(m_ShadowMap);
+		m_Shadows.SetObjects(new CTreeFieldCollection);
 		m_Shadows.CreateResources(m_Device);
 		return true;
 	}

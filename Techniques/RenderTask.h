@@ -167,7 +167,7 @@ class SimpleObjectInstance
 	const SimpleObject& m_Object;
 	CModelParameterProvider m_Provider;
 public:
-	SimpleObjectInstance(const SimpleObject& object, Device device, RootSignature root, float4x4 mtx);
+	SimpleObjectInstance(const SimpleObject& object, Device device, float4x4 mtx);
 	void Draw(Context context);
 	IParameterProvider* GetModelProvider() { return (IParameterProvider*)&m_Provider; };
 };
@@ -195,6 +195,19 @@ struct CShaderCache
 	RootSignature m_RootSig;
 
 };
+class IObjectCollection
+{
+protected:
+	std::vector<SimpleObject> m_Objects;
+	std::vector<SimpleObjectInstance*> m_ObjectInstances;
+	Dae::VertexLayout m_vertexLayout;
+public:
+	IObjectCollection() {};
+	virtual void Create(Device device) = 0;
+	virtual void Draw(Context context, CShaderCache& cache, int resources_slot);
+	void DefineVertexFormat(vector<AttribDesc>& format);
+	virtual ~IObjectCollection();
+};
 
 class CRenderTask
 {
@@ -203,11 +216,11 @@ public:
 	virtual void DestroyResources(Device device) = 0;
 	virtual void Draw(Context context) = 0;
 	virtual void SetCameraLookAt(vec3 eye, vec3 target,vec3 up){m_Camera.lookat(eye, target, up);};
+	void SetObjects(IObjectCollection* collection) { m_Collection = collection; };
 	Camera const& GetCamera() { return m_Camera; }
 	virtual ~CRenderTask() {};
 protected:
 	Camera m_Camera;
-	std::vector<SimpleObject> m_Objects;
-	std::vector<SimpleObjectInstance*> m_ObjectInstances;	
+	IObjectCollection* m_Collection = nullptr;
 	CShaderCache m_Cache;
 };

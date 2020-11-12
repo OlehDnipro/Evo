@@ -29,7 +29,7 @@ bool SimpleObject::Init(Device device, VertexLayout layout,const char* model, co
 	m_Texture = CreateTexture(device, texture);
 	return true;
 }
-SimpleObjectInstance::SimpleObjectInstance(const SimpleObject& object, Device device, RootSignature root, float4x4 mtx) :m_Object(object)
+SimpleObjectInstance::SimpleObjectInstance(const SimpleObject& object, Device device,  float4x4 mtx) :m_Object(object)
 {
 	SBufferParams cb_params = { sizeof(SPerModel), HeapType::HEAP_DEFAULT, Usage::CONSTANT_BUFFER, "" };
 	m_Provider.Get().model = mtx;
@@ -97,3 +97,50 @@ void CShaderCache::GatherParameters(IParameterProvider** providers,Context conte
 	}
 }
 
+void IObjectCollection::Draw(Context context, CShaderCache& cache,  int resources_slot)
+{
+	for (int i = 0; i < m_ObjectInstances.size(); i++)
+	{
+		IParameterProvider* prov = m_ObjectInstances[i]->GetModelProvider();
+		cache.GatherParameters(&prov, context, 1);
+		ResourceTable rt = CreateResourceTable(GetDevice(context), cache.m_RootSig, resources_slot, nullptr, 0, context);
+
+		UpdateResourceTable(GetDevice(context), cache.m_RootSig, resources_slot, rt,
+			cache.m_TableUpdates[resources_slot].m_Descriptors.data(), 0, 5);
+
+		SetGraphicsResourceTable(context, resources_slot, rt);
+
+		DestroyResourceTable(GetDevice(context), rt);
+		m_ObjectInstances[i]->Draw(context);
+	}
+}
+
+IObjectCollection::~IObjectCollection()
+{
+	for (int i = 0; i < m_ObjectInstances.size(); i++)
+	{
+		delete m_ObjectInstances[i];
+	}
+}
+
+void IObjectCollection::DefineVertexFormat(vector<AttribDesc>& format)
+{
+	for (int i = 0; i < m_vertexLayout.components.size(); i++)
+	{
+		switch (m_vertexLayout.components[i])
+		{
+		case VERTEX_COMPONENT_POSITION:
+			format.push_back({ 0, VF_FLOAT3, "Position" });
+			break;
+		case VERTEX_COMPONENT_NORMAL:
+			format.push_back({ 0, VF_FLOAT3, "Normal" });
+			break;
+		case VERTEX_COMPONENT_COLOR:
+			format.push_back({ 0, VF_FLOAT3, "Color" });
+			break;
+		case VERTEX_COMPONENT_UV:
+			format.push_back({ 0, VF_FLOAT2, "TexCoord" });
+			break;
+		}
+	};
+}

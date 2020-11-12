@@ -6,8 +6,6 @@
 CParameterProviderLayout CParameterProviderBase<CViewportParameterProvider>::m_Layout = CParameterProviderLayout(&CViewportParameterProvider::CreateParameterMap);
 CParameterProviderLayout CParameterProviderBase<CShadowParameterProvider>::m_Layout = CParameterProviderLayout(&CShadowParameterProvider::CreateParameterMap);
 
-//#define PROV
-
 
 void ShadowMapCascade::SetCameraLookAt(vec3 eye, vec3 target, vec3 up)
 {
@@ -78,37 +76,7 @@ void ShadowMapCascade::SetCameraLookAt(vec3 eye, vec3 target, vec3 up)
 	vec /= vec.w;
 }
 
-void ShadowMapCascade::CreateObjects(Device device)
-{
-	float4x4 mtx; mtx.identity();
-	m_Objects.resize(3);
-	m_Objects[0].Init(device, vertexLayout, "../../models/terrain_simple.dae", "../../Textures/gridlines.dds", 1.0f);
-	m_Objects[1].Init(device, vertexLayout, "../../models/oak_trunk.dae", "../../Textures/oak_bark.dds", 2.0f);
-	m_Objects[2].Init(device, vertexLayout, "../../models/oak_leafs.dae", "../../Textures/oak_leafs.dds", 2.0f);
-	m_ObjectInstances.resize(11);
-	m_ObjectInstances[0] = new SimpleObjectInstance(m_Objects[0], device, m_Cache.m_RootSig, mtx);
 
-	const std::vector<vec3> positions = {
-	vec3(0.0f, 0.0f, 0.0f),
-	vec3(1.25f, -0.25f, 1.25f),
-	vec3(-1.25f, 0.2f, 1.25f),
-	vec3(1.25f, -0.1f, -1.25f),
-	vec3(-1.25f, 0.25f, -1.25f),
-	};
-	for (int i = 1; i < 11; i++)
-	{
-		mtx = translate(positions[(i - 1) / 2]);
-		if (i % 2 == 0)
-		{
-			m_ObjectInstances[i] = new SimpleObjectInstance(m_Objects[1], device, m_Cache.m_RootSig, mtx);
-		}
-		else
-		{
-			m_ObjectInstances[i] = new SimpleObjectInstance(m_Objects[2], device, m_Cache.m_RootSig, mtx);
-		}
-	}
-
-}
 const char* GetResourceName(uint slot, uint binding)
 {
 	return NShadowMapCascade::RootItemNames[slot][binding];
@@ -120,8 +88,6 @@ bool ShadowMapCascade::CreateResources(Device device)
 		return false;
 	m_Cache.m_getResourceName = &GetResourceName;
 	IterateRootSignature(m_Cache.m_RootSig, &CShaderCache::FindRootResource, &m_Cache);
-
-	CreateObjects(device);
 	
 	const SSamplerDesc samplers[] = { { FILTER_TRILINEAR, 1, AM_WRAP, AM_WRAP, AM_WRAP, ALWAYS }, { FILTER_LINEAR, 1, AM_WRAP, AM_WRAP, AM_WRAP, LESS } };
 	if ((m_SamplerTable = CreateSamplerTable(device, m_Cache.m_RootSig, NShadowMapCascade::Samplers, samplers)) == nullptr) return false;
@@ -130,6 +96,9 @@ bool ShadowMapCascade::CreateResources(Device device)
 	m_ViewportProvider.Get().projection = m_Camera.ProjectPerspective(PI / 4, 720.0f / 1280.0f, 0.5, 20);
 	m_ViewportProvider.Get().lightDir = normalize(-lightPos);
 	
+	if (m_Collection)
+		m_Collection->Create(device);
+
 	return true;
 }
 
@@ -144,13 +113,9 @@ void ShadowMapCascade::SetPassParameters(Device device, RenderPass pass, PassEnu
 	m_curCascade = cascade;
 	if (m_Pipeline[m_currentPass] == VK_NULL_HANDLE)
 	{
-		const AttribDesc format[] =
-		{
-			{ 0, VF_FLOAT3, "Position"   },
-			{ 0, VF_FLOAT2, "TexCoord" },
-			{ 0, VF_FLOAT3, "Color" },
-			{ 0, VF_FLOAT3, "Normal" },
-		};
+
+		vector<AttribDesc> format;
+		m_Collection->DefineVertexFormat(format);
 
 		SPipelineParams p_params;
 		p_params.m_Name = "ShadowMapCascade";
@@ -166,7 +131,7 @@ void ShadowMapCascade::SetPassParameters(Device device, RenderPass pass, PassEnu
 			p_params.m_VS =  NShadowMapCascade::VSShadowPass;
 			p_params.m_PS =  NShadowMapCascade::PSShadowPass;
 		}
-		p_params.m_Attribs = format;
+		p_params.m_Attribs = format.data();
 		p_params.m_AttribCount = 4;
 
 		p_params.m_PrimitiveType = PRIM_TRIANGLES;
@@ -198,22 +163,7 @@ void ShadowMapCascade::Draw(Context context)
 											};
 	SetGraphicsSamplerTable(context, NShadowMapCascade::Samplers, m_SamplerTable);
 	m_Cache.GatherParameters(providers.data(), context, 2);
-
 	SetPipeline(context, m_Pipeline[m_currentPass]);
-	for (int i = 0; i < 11; i++)
-	{
-		providers[2] = m_ObjectInstances[i]->GetModelProvider();
-		m_Cache.GatherParameters(providers.data() +2 , context, 1);
-		
-		ResourceTable rt = CreateResourceTable(GetDevice(context), m_Cache.m_RootSig, NShadowMapCascade::Resources, nullptr, 0, context);
-
-		UpdateResourceTable(GetDevice(context), m_Cache.m_RootSig, NShadowMapCascade::Resources, rt,
-			m_Cache.m_TableUpdates[NShadowMapCascade::Resources].m_Descriptors.data(), 0, 5);
-
-		SetGraphicsResourceTable(context, NShadowMapCascade::Resources, rt);
-
-		DestroyResourceTable(GetDevice(context), rt);
-		m_ObjectInstances[i]->Draw(context);
-	}
+	m_Collection->Draw(context, m_Cache, NShadowMapCascade::Resources);
 }
 

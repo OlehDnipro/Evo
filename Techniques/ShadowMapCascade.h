@@ -49,6 +49,7 @@ public:
 	void PrepareConstantBuffer(Context context, uint8_t* param) { m_ModelConst.PrepareBuffer(context); }
 
 };
+
 class ShadowMapCascade: public CRenderTask
 {
 public:
@@ -61,7 +62,6 @@ public:
 	};
 	void SetShadowMap(Texture shadowMap){m_ShadowProvider.m_ShadowCascades = shadowMap;};
 	bool CreateResources(Device device);
-	void CreateObjects(Device device);
 	void DestroyResources(Device device);
 
 	void SetPassParameters(Device device, RenderPass pass, PassEnum passId, int cascade = -1);
@@ -70,12 +70,7 @@ public:
 	void SetCameraLookAt(vec3 eye, vec3 target,vec3 up);
 	Camera const& GetCamera() { return m_Camera; }
 private:
-	Dae::VertexLayout vertexLayout = Dae::VertexLayout({
-										VERTEX_COMPONENT_POSITION,
-										VERTEX_COMPONENT_UV,
-										VERTEX_COMPONENT_COLOR,
-										VERTEX_COMPONENT_NORMAL,
-									 });
+
 
 	Pipeline m_Pipeline[PassEnum::Count];
 	PassEnum m_currentPass;
