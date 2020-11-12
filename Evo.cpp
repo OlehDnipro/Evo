@@ -55,7 +55,8 @@ public:
 	bool Init()
 	{
 		CreateRenderSetups();
-		m_Shadows.CreateResources(m_Device, m_ShadowMap);
+		m_Shadows.SetShadowMap(m_ShadowMap);
+		m_Shadows.CreateResources(m_Device);
 		return true;
 	}
 	void CreateRenderSetups()
@@ -178,16 +179,14 @@ public:
 		for (int i = 0; i < SHADOW_MAP_CASCADE_COUNT; i++)
 		{
 			BeginRenderPass(context, "Shadow", m_RenderPassShadow, m_ShadowSetup[i], float4(0, 0, 0, 0));
-			m_Shadows.Update(context, i);
-			m_Shadows.PrepareDraw(m_Device, m_RenderPassShadow, ShadowMapCascade::ShadowPass);
-			m_Shadows.Draw(context,i);
+			m_Shadows.SetPassParameters(GetDevice(), m_RenderPassShadow, ShadowMapCascade::ShadowPass, i);
+			m_Shadows.Draw(context);
 			EndRenderPass(context, m_ShadowSetup[i]);
 		}
         Barrier(context, { { m_ShadowMap, EResourceState::RS_RENDER_TARGET, EResourceState::RS_COMMON} });
 
 		BeginRenderPass(context, "Backbuffer", m_RenderPassMain, m_RenderSetup[buffer_index], float4(0, 0, 0, 0));
-		m_Shadows.Update(context);
-		m_Shadows.PrepareDraw(m_Device, m_RenderPassMain, ShadowMapCascade::MainPass);
+		m_Shadows.SetPassParameters(GetDevice(), m_RenderPassMain, ShadowMapCascade::MainPass);
 		m_Shadows.Draw(context);
 		EndRenderPass(context, m_RenderSetup[buffer_index]);
         Barrier(context, { { GetBackBuffer(GetDevice(),buffer_index), EResourceState::RS_COMMON, EResourceState::RS_PRESENT} });
