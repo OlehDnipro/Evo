@@ -75,6 +75,27 @@ public:
 			}
 		}
 	}
+	void DefineVertexFormat(vector<AttribDesc>& format)
+	{
+		for (int i = 0; i < m_vertexLayout.components.size(); i++)
+		{
+			switch (m_vertexLayout.components[i])
+			{
+			case VERTEX_COMPONENT_POSITION:
+				format.push_back({ 0, VF_FLOAT3, "Position" });
+				break;
+			case VERTEX_COMPONENT_NORMAL:
+				format.push_back({ 0, VF_FLOAT3, "Normal" });
+				break;
+			case VERTEX_COMPONENT_COLOR:
+				format.push_back({ 0, VF_FLOAT3, "Color" });
+				break;
+			case VERTEX_COMPONENT_UV:
+				format.push_back({ 0, VF_FLOAT2, "TexCoord" });
+				break;
+			}
+		};
+	}
 };
 class EvoApp : public DemoApp
 {
@@ -94,7 +115,7 @@ public:
 	{
 		CreateRenderSetups();
 		m_Shadows.SetShadowMap(m_ShadowMap);
-		m_Shadows.SetObjects(new CTreeFieldCollection);
+		m_Shadows.SetGeometry(new CTreeFieldCollection);
 		m_Shadows.CreateResources(m_Device);
 		return true;
 	}

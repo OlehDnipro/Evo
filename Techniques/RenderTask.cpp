@@ -62,7 +62,7 @@ void CShaderCache::FindRootResource(ItemType type, uint slot, uint binding, uint
 }
 
 
-void CShaderCache::GatherParameters(IParameterProvider** providers,Context context, uint count)
+void CShaderCache::GatherParameters(Context context, IParameterProvider** providers, uint count)
 {
 	for (int i = 0; i < count; i++)
 	{
@@ -102,11 +102,10 @@ void IObjectCollection::Draw(Context context, CShaderCache& cache,  int resource
 	for (int i = 0; i < m_ObjectInstances.size(); i++)
 	{
 		IParameterProvider* prov = m_ObjectInstances[i]->GetModelProvider();
-		cache.GatherParameters(&prov, context, 1);
-		ResourceTable rt = CreateResourceTable(GetDevice(context), cache.m_RootSig, resources_slot, nullptr, 0, context);
+		cache.GatherParameters(context, &prov, 1);
+		ResourceTable rt = CreateResourceTable(GetDevice(context), cache.GetRootSignature(), resources_slot, nullptr, 0, context);
 
-		UpdateResourceTable(GetDevice(context), cache.m_RootSig, resources_slot, rt,
-			cache.m_TableUpdates[resources_slot].m_Descriptors.data(), 0, 5);
+		cache.UpdateResourceTable(GetDevice(context), resources_slot, rt);
 
 		SetGraphicsResourceTable(context, resources_slot, rt);
 
@@ -123,24 +122,20 @@ IObjectCollection::~IObjectCollection()
 	}
 }
 
-void IObjectCollection::DefineVertexFormat(vector<AttribDesc>& format)
+bool CShaderCache::CreateRootSignature(Device device, const SCodeBlob& code, TGetResourceName getName)
 {
-	for (int i = 0; i < m_vertexLayout.components.size(); i++)
-	{
-		switch (m_vertexLayout.components[i])
-		{
-		case VERTEX_COMPONENT_POSITION:
-			format.push_back({ 0, VF_FLOAT3, "Position" });
-			break;
-		case VERTEX_COMPONENT_NORMAL:
-			format.push_back({ 0, VF_FLOAT3, "Normal" });
-			break;
-		case VERTEX_COMPONENT_COLOR:
-			format.push_back({ 0, VF_FLOAT3, "Color" });
-			break;
-		case VERTEX_COMPONENT_UV:
-			format.push_back({ 0, VF_FLOAT2, "TexCoord" });
-			break;
-		}
-	};
+	if ((m_RootSig = ::CreateRootSignature(device, code)) == nullptr)
+		return false;
+	m_getResourceName = getName;
+	IterateRootSignature(m_RootSig, &CShaderCache::FindRootResource, this);
+}
+
+void CShaderCache::UpdateResourceTable(Device device, uint32 slot, ResourceTable table)
+{
+	::UpdateResourceTable(device, m_RootSig, slot, table,
+		m_TableUpdates[slot].m_Descriptors.data(), 0, m_TableUpdates[slot].m_Descriptors.size());
+}
+void CShaderCache::DestroyRootSignature(Device device)
+{
+	::DestroyRootSignature(device, m_RootSig);
 }

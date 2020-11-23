@@ -172,9 +172,18 @@ public:
 	IParameterProvider* GetModelProvider() { return (IParameterProvider*)&m_Provider; };
 };
 
-struct CShaderCache
+class CShaderCache
 {
-	
+	typedef const char* (*TGetResourceName)(uint slot, uint bind);
+	TGetResourceName m_getResourceName;
+public:
+	void GatherParameters(Context context, IParameterProvider** providers,  uint count);
+	bool CreateRootSignature(Device device, const SCodeBlob& code, TGetResourceName getName);
+	void DestroyRootSignature(Device device);
+	RootSignature GetRootSignature() { return m_RootSig; }
+	void UpdateResourceTable(Device, uint32 slot, ResourceTable table);
+
+private:
 	struct TableUpdate
 	{
 		uint32_t slot;
@@ -188,14 +197,20 @@ struct CShaderCache
 		uint32_t m_slot, m_binding;
 	};
 	std::map<uint32_t, vector<SRequiredParameter>> m_ProviderUsage;
-	void GatherParameters( IParameterProvider** providers, Context context, uint count);
 	static void FindRootResource(ItemType type, uint slot, uint binding, uint first_item_of_table_with_size, void* receiver);
-	typedef const char* (*TGetResourceName)(uint slot, uint bind);
-	TGetResourceName m_getResourceName;
+
 	RootSignature m_RootSig;
 
 };
-class IObjectCollection
+class IGeometryCollection
+{
+public:
+	virtual void Create(Device device) = 0;
+	virtual void Draw(Context context, CShaderCache& cache, int resources_slot) = 0;
+	virtual void DefineVertexFormat(vector<AttribDesc>& format) = 0;
+};
+
+class IObjectCollection:public IGeometryCollection
 {
 protected:
 	std::vector<SimpleObject> m_Objects;
@@ -203,9 +218,7 @@ protected:
 	Dae::VertexLayout m_vertexLayout;
 public:
 	IObjectCollection() {};
-	virtual void Create(Device device) = 0;
 	virtual void Draw(Context context, CShaderCache& cache, int resources_slot);
-	void DefineVertexFormat(vector<AttribDesc>& format);
 	virtual ~IObjectCollection();
 };
 
@@ -216,11 +229,11 @@ public:
 	virtual void DestroyResources(Device device) = 0;
 	virtual void Draw(Context context) = 0;
 	virtual void SetCameraLookAt(vec3 eye, vec3 target,vec3 up){m_Camera.lookat(eye, target, up);};
-	void SetObjects(IObjectCollection* collection) { m_Collection = collection; };
+	virtual void SetGeometry(IGeometryCollection* collection) { m_Collection = collection; };
 	Camera const& GetCamera() { return m_Camera; }
 	virtual ~CRenderTask() {};
 protected:
 	Camera m_Camera;
-	IObjectCollection* m_Collection = nullptr;
+	IGeometryCollection* m_Collection = nullptr;
 	CShaderCache m_Cache;
 };

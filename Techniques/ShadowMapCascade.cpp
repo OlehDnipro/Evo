@@ -84,13 +84,10 @@ const char* GetResourceName(uint slot, uint binding)
 
 bool ShadowMapCascade::CreateResources(Device device)
 {
-	if ((m_Cache.m_RootSig = CreateRootSignature(device, NShadowMapCascade::RootSig)) == nullptr) 
-		return false;
-	m_Cache.m_getResourceName = &GetResourceName;
-	IterateRootSignature(m_Cache.m_RootSig, &CShaderCache::FindRootResource, &m_Cache);
+	m_Cache.CreateRootSignature(device, NShadowMapCascade::RootSig, &GetResourceName);
 	
 	const SSamplerDesc samplers[] = { { FILTER_TRILINEAR, 1, AM_WRAP, AM_WRAP, AM_WRAP, ALWAYS }, { FILTER_LINEAR, 1, AM_WRAP, AM_WRAP, AM_WRAP, LESS } };
-	if ((m_SamplerTable = CreateSamplerTable(device, m_Cache.m_RootSig, NShadowMapCascade::Samplers, samplers)) == nullptr) return false;
+	if ((m_SamplerTable = CreateSamplerTable(device, m_Cache.GetRootSignature(), NShadowMapCascade::Samplers, samplers)) == nullptr) return false;
 
 	vec3 lightPos = { 6.18, 20, -19 };
 	m_ViewportProvider.Get().projection = m_Camera.ProjectPerspective(PI / 4, 720.0f / 1280.0f, 0.5, 20);
@@ -104,7 +101,7 @@ bool ShadowMapCascade::CreateResources(Device device)
 
 void ShadowMapCascade::DestroyResources(Device device)
 {
-	DestroyRootSignature(device, m_Cache.m_RootSig);
+	m_Cache.DestroyRootSignature(device);
 }
 
 void ShadowMapCascade::SetPassParameters(Device device, RenderPass pass, PassEnum passId, int cascade)
@@ -119,7 +116,7 @@ void ShadowMapCascade::SetPassParameters(Device device, RenderPass pass, PassEnu
 
 		SPipelineParams p_params;
 		p_params.m_Name = "ShadowMapCascade";
-		p_params.m_RootSignature = m_Cache.m_RootSig;
+		p_params.m_RootSignature = m_Cache.GetRootSignature();
 		p_params.m_RenderPass = pass;
 		if (passId == PassEnum::MainPass)
 		{
@@ -155,14 +152,14 @@ void ShadowMapCascade::SetPassParameters(Device device, RenderPass pass, PassEnu
 
 void ShadowMapCascade::Draw(Context context)
 {
-	SetRootSignature(context, m_Cache.m_RootSig);
+	SetRootSignature(context, m_Cache.GetRootSignature());
 	vector<IParameterProvider*> providers = { m_curCascade < 0 ? (IParameterProvider*)&m_ViewportProvider :
 															(IParameterProvider*)&m_ShadowViewportProvider[m_curCascade],
 															(IParameterProvider*)&m_ShadowProvider,
 															nullptr
 											};
 	SetGraphicsSamplerTable(context, NShadowMapCascade::Samplers, m_SamplerTable);
-	m_Cache.GatherParameters(providers.data(), context, 2);
+	m_Cache.GatherParameters(context, providers.data(), 2);
 	SetPipeline(context, m_Pipeline[m_currentPass]);
 	m_Collection->Draw(context, m_Cache, NShadowMapCascade::Resources);
 }
