@@ -177,6 +177,7 @@ class CShaderCache
 	typedef const char* (*TGetResourceName)(uint slot, uint bind);
 	TGetResourceName m_getResourceName;
 public:
+	void GatherParameters(const vector<SResourceDesc> &resources, uint count, uint slot);
 	void GatherParameters(Context context, IParameterProvider** providers,  uint count);
 	bool CreateRootSignature(Device device, const SCodeBlob& code, TGetResourceName getName);
 	void DestroyRootSignature(Device device);

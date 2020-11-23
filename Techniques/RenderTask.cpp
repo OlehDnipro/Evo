@@ -43,24 +43,35 @@ void SimpleObjectInstance::Draw(Context context)
 
 void CShaderCache::FindRootResource(ItemType type, uint slot, uint binding, uint first_item_of_table_with_size, void* receiver)
 {
-	CShaderCache* shadow = (CShaderCache*)receiver;
+	CShaderCache* cache = (CShaderCache*)receiver;
 	if (first_item_of_table_with_size)
 	{
 		TableUpdate update;
 		update.slot = slot;
 		update.m_Descriptors.resize(first_item_of_table_with_size);
-		shadow->m_TableUpdates.push_back(update);
+		cache->m_TableUpdates.push_back(update);
 	}
-	const char* name = shadow->m_getResourceName(slot,binding);
-	uint32_t layout, offset;
-	bool new_search = true;
-	while(CParameterProviderRegistry::GetInstane()->FindNextLayout(name, new_search, layout, offset))
+	if (cache->m_getResourceName)
 	{
-		new_search = false;
-		shadow->m_ProviderUsage[layout].push_back({ type, offset, slot, binding });
+		const char* name = cache->m_getResourceName(slot, binding);
+		uint32_t layout, offset;
+		bool new_search = true;
+		while (CParameterProviderRegistry::GetInstane()->FindNextLayout(name, new_search, layout, offset))
+		{
+			new_search = false;
+			cache->m_ProviderUsage[layout].push_back({ type, offset, slot, binding });
+		}
 	}
 }
 
+void CShaderCache::GatherParameters(const vector<SResourceDesc>&resources, uint count, uint slot)
+{
+	assert(m_TableUpdates[slot].m_Descriptors.size() <= count);
+	for (int i = 0; i < count; i++)
+	{
+		m_TableUpdates[slot].m_Descriptors[i] = resources[i];
+	}
+}
 
 void CShaderCache::GatherParameters(Context context, IParameterProvider** providers, uint count)
 {
