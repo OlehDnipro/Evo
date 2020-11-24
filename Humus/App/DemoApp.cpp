@@ -284,7 +284,7 @@ void DemoApp::MakeFrame()
 		TransitionRenderSetup(context, back_buffer_setup, RS_PRESENT, RS_RENDER_TARGET);
 
 		DrawFrame(context, buffer_index);
-		DrawGUI(context, buffer_index, profile_data, profile_data_count);
+		//DrawGUI(context, buffer_index, profile_data, profile_data_count);
 
 		if (m_TakeScreenshot)
 		{

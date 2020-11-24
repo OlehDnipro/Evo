@@ -83,12 +83,10 @@ void CPolygonGeometry::UpdatePos(float radius, float2 pos)
 
 bool CPolygonTask::CreateResources(Device device)
 {
-
+    m_Device = device;
+    return  m_Cache.CreateRootSignature(m_Device, NPolygon::RootSig, nullptr);
 }
-void CPolygonTask::DestroyResources(Device device)
-{
 
-}
 void CPolygonTask::Draw(Context context)
 {
 	SetRootSignature(context, m_Cache.GetRootSignature());
@@ -125,12 +123,10 @@ void CPolygonTask::SetPassParameters(Device device, RenderPass pass)
 
 bool CWaterDropTask::CreateResources(Device device)
 {
-
+    m_Device = device;
+    return  m_Cache.CreateRootSignature(m_Device, NWaterdrop::RootSig, nullptr);
 }
-void CWaterDropTask::DestroyResources(Device device)
-{
 
-}
 void CWaterDropTask::Draw(Context context)
 {
 	SetRootSignature(context, m_Cache.GetRootSignature());
