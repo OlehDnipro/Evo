@@ -150,6 +150,7 @@ enum PrimitiveType
 	PRIM_LINESTRIP,
 	PRIM_TRIANGLES,
 	PRIM_TRIANGLESTRIP,
+	PRIM_TRIANGLE_FAN
 };
 
 enum AttribFormat

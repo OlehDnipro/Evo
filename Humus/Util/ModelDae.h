@@ -124,7 +124,7 @@ namespace Dae
 			vec3 size;
 		} dim;
 		vec3 model_center;
-
+		~Model() { destroy(); }
 		/** @brief Release all Vulkan resources of this model */
 		void destroy()
 		{

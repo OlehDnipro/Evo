@@ -129,9 +129,9 @@ void ShadowMapCascade::SetPassParameters(Device device, RenderPass pass, PassEnu
 			p_params.m_PS =  NShadowMapCascade::PSShadowPass;
 		}
 		p_params.m_Attribs = format.data();
-		p_params.m_AttribCount = 4;
+		p_params.m_AttribCount = format.size();
 
-		p_params.m_PrimitiveType = PRIM_TRIANGLES;
+		p_params.m_PrimitiveType = m_Collection->GetPrimType();
 
 		p_params.m_BlendState = GetDefaultBlendState(device);
 		p_params.m_DepthTest = true;

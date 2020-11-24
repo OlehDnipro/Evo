@@ -1,23 +1,4 @@
 
-/* * * * * * * * * * * * * Author's note * * * * * * * * * * * *\
-*   _       _   _       _   _       _   _       _     _ _ _ _   *
-*  |_|     |_| |_|     |_| |_|_   _|_| |_|     |_|  _|_|_|_|_|  *
-*  |_|_ _ _|_| |_|     |_| |_|_|_|_|_| |_|     |_| |_|_ _ _     *
-*  |_|_|_|_|_| |_|     |_| |_| |_| |_| |_|     |_|   |_|_|_|_   *
-*  |_|     |_| |_|_ _ _|_| |_|     |_| |_|_ _ _|_|  _ _ _ _|_|  *
-*  |_|     |_|   |_|_|_|   |_|     |_|   |_|_|_|   |_|_|_|_|    *
-*                                                               *
-*                     http://www.humus.name                     *
-*                                                                *
-* This file is a part of the work done by Humus. You are free to   *
-* use the code in any way you like, modified, unmodified or copied   *
-* into your own work. However, I expect you to respect these points:  *
-*  - If you use this file and its contents unmodified, or use a major *
-*    part of this file, please credit the author and leave this note. *
-*  - For use in anything commercial, please request my approval.     *
-*  - Share your work and ideas too as much as you can.             *
-*                                                                *
-\* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 
 #pragma once
 
@@ -177,7 +158,7 @@ class CShaderCache
 	typedef const char* (*TGetResourceName)(uint slot, uint bind);
 	TGetResourceName m_getResourceName;
 public:
-	void GatherParameters(const vector<SResourceDesc> &resources, uint count, uint slot);
+	void GatherParameters(const vector<SResourceDesc> &resources, uint slot);
 	void GatherParameters(Context context, IParameterProvider** providers,  uint count);
 	bool CreateRootSignature(Device device, const SCodeBlob& code, TGetResourceName getName);
 	void DestroyRootSignature(Device device);
@@ -206,9 +187,11 @@ private:
 class IGeometryCollection
 {
 public:
+	virtual ~IGeometryCollection(){}
 	virtual void Create(Device device) = 0;
 	virtual void Draw(Context context, CShaderCache& cache, int resources_slot) = 0;
 	virtual void DefineVertexFormat(vector<AttribDesc>& format) = 0;
+	virtual PrimitiveType GetPrimType() = 0;
 };
 
 class IObjectCollection:public IGeometryCollection
