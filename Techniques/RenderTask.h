@@ -210,7 +210,6 @@ class CRenderTask
 {
 public:
 	virtual bool CreateResources(Device device) = 0;
-	virtual void DestroyResources(Device device) = 0;
 	virtual void Draw(Context context) = 0;
 	virtual void SetCameraLookAt(vec3 eye, vec3 target,vec3 up){m_Camera.lookat(eye, target, up);};
 	virtual void SetGeometry(IGeometryCollection* collection) { m_Collection = collection; };
@@ -220,4 +219,5 @@ protected:
 	Camera m_Camera;
 	IGeometryCollection* m_Collection = nullptr;
 	CShaderCache m_Cache;
+	Device m_Device;	
 };

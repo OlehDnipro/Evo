@@ -108,6 +108,7 @@ class EvoApp : public DemoApp
 	RenderSetup m_RenderSetup[BUFFER_FRAMES];
 	RenderSetup m_ShadowSetup[SHADOW_MAP_CASCADE_COUNT];
 	ShadowMapCascade m_Shadows;
+	CTreeFieldCollection m_TreeField;
 public:
     EvoApp() :DemoApp()
     {
@@ -116,8 +117,9 @@ public:
 	bool Init()
 	{
 		CreateRenderSetups();
+		m_TreeField.Create(m_Device);
 		m_Shadows.SetShadowMap(m_ShadowMap);
-		m_Shadows.SetGeometry(new CTreeFieldCollection);
+		m_Shadows.SetGeometry(&m_TreeField);
 		m_Shadows.CreateResources(m_Device);
 		return true;
 	}
@@ -174,17 +176,22 @@ public:
 			m_ShadowSetup[i] = CreateRenderSetup(m_Device, m_RenderPassShadow, nullptr, 0, m_ShadowMap, nullptr, i);
 		}
 	}
-	void DestroyRenderSetups()
+	~EvoApp()	
 	{
-		for (uint i = 0; i < BUFFER_FRAMES; i++)
-			DestroyRenderSetup(m_Device, m_RenderSetup[i]);
-
 		DestroyTexture(m_Device, m_DepthBuffer);
 		DestroyTexture(m_Device, m_ShadowMap);
 
 		DestroyRenderPass(m_Device, m_RenderPassMain);
 		DestroyRenderPass(m_Device, m_RenderPassShadow);
 
+		DestroyRenderSetups();
+	}
+	void DestroyRenderSetups()
+	{
+		for (int i = 0; i < BUFFER_FRAMES; i++)
+			DestroyRenderSetup(m_Device, m_RenderSetup[i]);
+		for (int i = 0; i < SHADOW_MAP_CASCADE_COUNT; i++) 
+			DestroyRenderSetup(m_Device, m_ShadowSetup[i]);
 	}
 	void UpdateCamera()
 	{
@@ -231,27 +238,21 @@ public:
 	void DrawFrame(Context context, uint buffer_index)
 	{
         static bool init = false;
-        if (!init)
-        {
-            init = true;
-            Barrier(context, { { m_ShadowMap, EResourceState::RS_COMMON, EResourceState::RS_COMMON} });
-        }
-        else
-            Barrier(context, { { m_ShadowMap, EResourceState::RS_COMMON, EResourceState::RS_RENDER_TARGET} });
+        Barrier(context, { { m_ShadowMap, GetCurrentState(m_ShadowMap), EResourceState::RS_RENDER_TARGET} });
 		for (int i = 0; i < SHADOW_MAP_CASCADE_COUNT; i++)
 		{
 			BeginRenderPass(context, "Shadow", m_RenderPassShadow, m_ShadowSetup[i], float4(0, 0, 0, 0));
-			m_Shadows.SetPassParameters(GetDevice(), m_RenderPassShadow, ShadowMapCascade::ShadowPass, i);
+			m_Shadows.SetPassParameters(m_RenderPassShadow, ShadowMapCascade::ShadowPass, i);
 			m_Shadows.Draw(context);
 			EndRenderPass(context, m_ShadowSetup[i]);
 		}
-        Barrier(context, { { m_ShadowMap, EResourceState::RS_RENDER_TARGET, EResourceState::RS_COMMON} });
+        Barrier(context, { { m_ShadowMap, GetCurrentState(m_ShadowMap), EResourceState::RS_SHADER_READ} });
 
 		BeginRenderPass(context, "Backbuffer", m_RenderPassMain, m_RenderSetup[buffer_index], float4(0, 0, 0, 0));
-		m_Shadows.SetPassParameters(GetDevice(), m_RenderPassMain, ShadowMapCascade::MainPass);
+		m_Shadows.SetPassParameters(m_RenderPassMain, ShadowMapCascade::MainPass);
 		m_Shadows.Draw(context);
 		EndRenderPass(context, m_RenderSetup[buffer_index]);
-        Barrier(context, { { GetBackBuffer(GetDevice(),buffer_index), EResourceState::RS_COMMON, EResourceState::RS_PRESENT} });
+        Barrier(context, { { GetBackBuffer(GetDevice(),buffer_index), EResourceState::RS_RENDER_TARGET, EResourceState::RS_PRESENT} });
 	};
 };
 static DemoApp *app = nullptr; // Should come up with something prettier than this

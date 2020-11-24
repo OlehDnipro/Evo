@@ -178,12 +178,15 @@ struct AttribDesc
 
 enum EResourceState
 {
-	RS_COMMON            = 0x0,
-	RS_PRESENT           = 0x0,
-	RS_VERTEX_BUFFER     = 0x1,
-	RS_INDEX_BUFFER      = 0x2,
-	RS_RENDER_TARGET     = 0x4,
-	RS_UNORDERED_ACCESS  = 0x8,
+	RS_UNDEFINED		 = 0x0,
+	RS_PRESENT           = 0x1,
+	RS_SHADER_READ		 = 0x2,
+	RS_VERTEX_BUFFER     = 0x4,
+	RS_INDEX_BUFFER      = 0x8,
+	RS_RENDER_TARGET     = 0x10,
+	RS_UNORDERED_ACCESS  = 0x20,
+	RS_TRANSFER_DST		 = 0x40,
+	RS_TRANSFER_SRC		 = 0x80,
 	RS_INDIRECT_ARGUMENT = 0x200,
 };
 
@@ -280,6 +283,8 @@ Context CreateContext(Device device, bool deferred);
 void DestroyContext(Device device, Context& context);
 Device GetDevice(Context context);
 
+EResourceState GetCurrentState(Texture texture);
+EResourceState GetCurrentState(Buffer buffer);
 
 Texture CreateTexture(Device device, const char* filename, uint mipmap_count = 0);
 Texture CreateTexture(Device device, const char** filenames, uint slices, uint mipmap_count = 0);

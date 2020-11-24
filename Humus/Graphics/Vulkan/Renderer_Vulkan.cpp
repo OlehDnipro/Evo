@@ -213,7 +213,7 @@ struct STexture
 	uint m_MipLevels;
 	TextureType m_Type;
 	ImageFormat m_Format;
-
+	EResourceState m_State;
 	VkDeviceMemory m_Memory;
 };
 
@@ -302,6 +302,7 @@ struct SBuffer
 	VkBuffer m_Buffer;
 	uint     m_Size;
 	HeapType m_HeapType;
+	EResourceState m_State;
 	VkDeviceMemory m_Memory;
 };
 
@@ -2876,8 +2877,44 @@ static VkAccessFlags GetFlags(EResourceState state)
 		flags |= VK_ACCESS_INDIRECT_COMMAND_READ_BIT;
 	if (state & RS_UNORDERED_ACCESS)
 		flags |= VK_ACCESS_SHADER_WRITE_BIT;
-
+	if (state & RS_SHADER_READ)
+		flags |= VK_ACCESS_SHADER_READ_BIT;
+	if (state & RS_TRANSFER_DST)
+		flags |= VK_ACCESS_TRANSFER_WRITE_BIT;
+	if (state & RS_TRANSFER_SRC)
+		flags |= VK_ACCESS_TRANSFER_READ_BIT;
+	if (state & RS_UNDEFINED)
+		return VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
 	return flags;
+}
+static VkImageLayout GetImageLayout(EResourceState state, bool depth)
+{
+	switch (state)
+	{
+	case RS_PRESENT:
+		return VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+	case RS_SHADER_READ:
+		return depth? VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL: VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+	case RS_RENDER_TARGET:
+		return depth? VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL: VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+	case RS_TRANSFER_DST:
+		return VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+	case RS_TRANSFER_SRC:
+		return VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+	case RS_UNORDERED_ACCESS:
+		return VK_IMAGE_LAYOUT_GENERAL;
+	default:
+		return VK_IMAGE_LAYOUT_UNDEFINED;
+	};
+}
+EResourceState GetCurrentState(Texture texture)
+{
+	return texture->m_State;
+}
+
+EResourceState GetCurrentState(Buffer buffer)
+{
+	return buffer->m_State;
 }
 
 void Barrier(Context context, const SBarrierDesc* barriers, uint count)
@@ -2894,39 +2931,16 @@ void Barrier(Context context, const SBarrierDesc* barriers, uint count)
     for (uint i = 0; i < count; i++)
     {
         if (barriers[i].m_Type == RESTYPE_TEXTURE)
-        {
+		{
             const Texture texture = (Texture)barriers[i].m_Resource;
 
-            img_barrier.srcAccessMask = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
-            img_barrier.dstAccessMask = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
-            if (!IsDepthFormat(texture->m_Format))
-            {
-                if (barriers[i].m_After != EResourceState::RS_PRESENT)
-                {
-                    img_barrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-                    img_barrier.newLayout = VK_IMAGE_LAYOUT_GENERAL;
-                }
-                else
-                {
-                    img_barrier.oldLayout = VK_IMAGE_LAYOUT_GENERAL;
-                    img_barrier.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-                }
-                img_barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-            }
-            else
-            {
-                if (barriers[i].m_Before == barriers[i].m_After)
-                {
-                    img_barrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-                    img_barrier.newLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-                }
-                else
-                {
-                    img_barrier.oldLayout = (barriers[i].m_Before == EResourceState::RS_RENDER_TARGET) ? VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL : VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
-                    img_barrier.newLayout = (barriers[i].m_After == EResourceState::RS_RENDER_TARGET) ? VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL : VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
-                }
-                img_barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
-            }
+            img_barrier.srcAccessMask = GetFlags(barriers[i].m_Before);
+            img_barrier.dstAccessMask = GetFlags(barriers[i].m_After);
+			bool isDepth = IsDepthFormat(texture->m_Format);
+			img_barrier.subresourceRange.aspectMask = isDepth ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT;
+			img_barrier.oldLayout = GetImageLayout(barriers[i].m_Before, isDepth);
+			img_barrier.newLayout = GetImageLayout(barriers[i].m_After, isDepth);
+
             img_barrier.subresourceRange.baseMipLevel = 0;
             img_barrier.subresourceRange.levelCount = texture->m_MipLevels;
             img_barrier.subresourceRange.baseArrayLayer = 0;
@@ -2935,11 +2949,16 @@ void Barrier(Context context, const SBarrierDesc* barriers, uint count)
             img_barrier.image = texture->m_Image;
 
             image_count++;
+			texture->m_State = barriers[i].m_After;
         }
         else
         {
-            mem_barrier.srcAccessMask |= GetFlags(barriers[i].m_Before);
-            mem_barrier.dstAccessMask |= GetFlags(barriers[i].m_After);
+			const Buffer buffer = (Buffer)barriers[i].m_Resource;
+
+            mem_barrier.srcAccessMask = GetFlags(barriers[i].m_Before);
+            mem_barrier.dstAccessMask = GetFlags(barriers[i].m_After);
+			buffer->m_State = barriers[i].m_After;
+
         }
     }
 

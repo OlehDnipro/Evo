@@ -84,27 +84,25 @@ const char* GetResourceName(uint slot, uint binding)
 
 bool ShadowMapCascade::CreateResources(Device device)
 {
-	m_Cache.CreateRootSignature(device, NShadowMapCascade::RootSig, &GetResourceName);
+	m_Device = device;
+	m_Cache.CreateRootSignature(m_Device, NShadowMapCascade::RootSig, &GetResourceName);
 	
 	const SSamplerDesc samplers[] = { { FILTER_TRILINEAR, 1, AM_WRAP, AM_WRAP, AM_WRAP, ALWAYS }, { FILTER_LINEAR, 1, AM_WRAP, AM_WRAP, AM_WRAP, LESS } };
-	if ((m_SamplerTable = CreateSamplerTable(device, m_Cache.GetRootSignature(), NShadowMapCascade::Samplers, samplers)) == nullptr) return false;
+	if ((m_SamplerTable = CreateSamplerTable(m_Device, m_Cache.GetRootSignature(), NShadowMapCascade::Samplers, samplers)) == nullptr) return false;
 
 	vec3 lightPos = { 6.18, 20, -19 };
 	m_ViewportProvider.Get().projection = m_Camera.ProjectPerspective(PI / 4, 720.0f / 1280.0f, 0.5, 20);
 	m_ViewportProvider.Get().lightDir = normalize(-lightPos);
-	
-	if (m_Collection)
-		m_Collection->Create(device);
 
 	return true;
 }
 
-void ShadowMapCascade::DestroyResources(Device device)
+ShadowMapCascade::~ShadowMapCascade()
 {
-	m_Cache.DestroyRootSignature(device);
+	m_Cache.DestroyRootSignature(m_Device);
 }
 
-void ShadowMapCascade::SetPassParameters(Device device, RenderPass pass, PassEnum passId, int cascade)
+void ShadowMapCascade::SetPassParameters(RenderPass pass, PassEnum passId, int cascade)
 {
 	m_currentPass = passId;
 	m_curCascade = cascade;
@@ -133,11 +131,11 @@ void ShadowMapCascade::SetPassParameters(Device device, RenderPass pass, PassEnu
 
 		p_params.m_PrimitiveType = m_Collection->GetPrimType();
 
-		p_params.m_BlendState = GetDefaultBlendState(device);
+		p_params.m_BlendState = GetDefaultBlendState(m_Device);
 		p_params.m_DepthTest = true;
 		p_params.m_DepthWrite = true;
 		p_params.m_DepthFunc = EComparisonFunc::LESS;
-		m_Pipeline[m_currentPass] = CreatePipeline(device, p_params);
+		m_Pipeline[m_currentPass] = CreatePipeline(m_Device, p_params);
 	}
 	
 	if (cascade >= 0)

@@ -70,6 +70,7 @@ DemoApp::~DemoApp()
 	}
 
 	m_Config.Save("Settings.ini");
+	DestroyDevice(m_Device);
 }
 
 bool DemoApp::Create()
@@ -126,7 +127,6 @@ void DemoApp::Destroy()
 	DestroyBlendState(m_Device, m_BlendSrcAlpha);
 	DestroySamplerTable(m_Device, m_LinearClamp);
 
-	DestroyDevice(m_Device);
 }
 
 void DemoApp::InitGUI()
