@@ -96,7 +96,7 @@ public:
 			}
 		};
 	}
-	PrimitiveType GetPrimType() { return PRIM_TRIANGLESTRIP; };
+	PrimitiveType GetPrimType() { return PRIM_TRIANGLES; };
 
 };
 class EvoApp : public DemoApp
