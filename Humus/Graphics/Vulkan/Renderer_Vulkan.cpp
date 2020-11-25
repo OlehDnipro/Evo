@@ -31,7 +31,7 @@
 
 
 //#ifdef DEBUG
-//#define USE_DEBUG_MARKERS
+#define USE_DEBUG_MARKERS
 #define USE_DEBUG_UTILS
 //#endif
 
@@ -1710,151 +1710,152 @@ void DestroyRenderSetup(Device device, RenderSetup& setup)
 
 RootSignature CreateRootSignature(Device device, const SCodeBlob& blob)
 {
-	const SVulkanRoot* root = (const SVulkanRoot*) blob.m_Code;
-	const size_t root_slots_size = sizeof(SVulkanRoot) + (root->m_NumSlots - 1) * sizeof(SVulkanRootSlot);
-	const SVulkanResourceTableItem* resource_table_items = (const SVulkanResourceTableItem*) ((char*) root + root_slots_size);
-
-	ASSERT(blob.m_Size >= root_slots_size);
-
-	// Find largest resource/sampler table
-	uint32 max_table_size = 0;
-	uint32 total_table_descriptors = 0;
-	const uint32 num_slots = root->m_NumSlots;
-	for (uint32 i = 0; i < num_slots; i++)
-	{
-		const SVulkanRootSlot& slot = root->m_Slots[i];
-		if (slot.m_Type == RESOURCE_TABLE || slot.m_Type == SAMPLER_TABLE)
-		{
-			max_table_size = max(max_table_size, slot.m_Size);
-			for (uint32 d = 0; d < slot.m_Size; d++)
-			{
-				total_table_descriptors += resource_table_items[d].m_NumElements;
-			}
-			resource_table_items += slot.m_Size;
-		}
-	}
-
-	ASSERT(blob.m_Size == size_t((char*) resource_table_items - (char*) root));
-	// Reset pointer for reiteration
-	resource_table_items = (const SVulkanResourceTableItem*) ((char*) root + root_slots_size);
-
-	VkDescriptorSetLayout descriptor_set_layouts[16] = {};
-
+	const SVulkanRoot* root = (const SVulkanRoot*)blob.m_Code;
+	VkDescriptorSetLayoutBinding* bindings = VK_NULL_HANDLE;
 	// Create the pipeline layout that is used to generate the rendering pipelines that are based on this descriptor set layout
-	// In a more complex scenario you would have different pipeline layouts for different descriptor set layouts that could be reused
+// In a more complex scenario you would have different pipeline layouts for different descriptor set layouts that could be reused
 	VkPipelineLayoutCreateInfo pipeline_layout_create_info = {};
 	pipeline_layout_create_info.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+	const SVulkanResourceTableItem* resource_table_items = nullptr;
+	VkDescriptorSetLayout descriptor_set_layouts[16] = {};
 
-	VkPushConstantRange range;
-	range.stageFlags = VK_SHADER_STAGE_ALL;
-	range.offset = 0;
-	range.size = 0;
-
-	VkDescriptorSetLayoutBinding* bindings = VK_NULL_HANDLE;
-	if (max_table_size)
+	if (root->m_NumSlots)
 	{
-		size_t size = max_table_size * sizeof(VkDescriptorSetLayoutBinding);
-		bindings = (VkDescriptorSetLayoutBinding*) alloca(size);
-		memset(bindings, 0, size);
-	}
+		const size_t root_slots_size = sizeof(SVulkanRoot) + (root->m_NumSlots - 1) * sizeof(SVulkanRootSlot);
+		resource_table_items = (const SVulkanResourceTableItem*)((char*)root + root_slots_size);
 
-	static const VkDescriptorType descriptor_types[] =
-	{
-		VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, // ROOT_CONST
-		VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
-		VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-		VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
-		VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
-		VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-		VK_DESCRIPTOR_TYPE_SAMPLER,
-	};
+		ASSERT(blob.m_Size >= root_slots_size);
 
-	uint32 num_descriptor_sets = 0;
-	for (uint32 i = 0; i < num_slots; i++)
-	{
-		const SVulkanRootSlot& slot = root->m_Slots[i];
-
-		switch (slot.m_Type)
+		// Find largest resource/sampler table
+		uint32 max_table_size = 0;
+		uint32 total_table_descriptors = 0;
+		const uint32 num_slots = root->m_NumSlots;
+		for (uint32 i = 0; i < num_slots; i++)
 		{
-		case CONSTANT:
-			range.size += slot.m_Size * sizeof(uint32);
-			break;
-		case CBV:
-		{
-			VkDescriptorSetLayoutBinding ubo_binding = {};
-			ubo_binding.binding = 0;
-			ubo_binding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
-			ubo_binding.descriptorCount = 1;
-			ubo_binding.stageFlags = VK_SHADER_STAGE_ALL;//VK_SHADER_STAGE_ALL_GRAPHICS;
-
-			VkDescriptorSetLayoutCreateInfo layout_info = {};
-			layout_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-			layout_info.bindingCount = 1;
-			layout_info.pBindings = &ubo_binding;
-
-			VkResult res = vkCreateDescriptorSetLayout(device->m_Device, &layout_info, VK_NULL_HANDLE, &descriptor_set_layouts[num_descriptor_sets]);
-			ASSERT(res == VK_SUCCESS);
-
-			++num_descriptor_sets;
-			break;
-		}
-		case RESOURCE_TABLE:
-		case SAMPLER_TABLE:
-		{
-			for (uint j = 0; j < slot.m_Size; j++)
+			const SVulkanRootSlot& slot = root->m_Slots[i];
+			if (slot.m_Type == RESOURCE_TABLE || slot.m_Type == SAMPLER_TABLE)
 			{
-				bindings[j].binding = j;
-				bindings[j].descriptorType = descriptor_types[resource_table_items[j].m_Type];
-				bindings[j].descriptorCount = resource_table_items[j].m_NumElements;
-				bindings[j].stageFlags = VK_SHADER_STAGE_ALL;//VK_SHADER_STAGE_ALL_GRAPHICS;
+				max_table_size = max(max_table_size, slot.m_Size);
+				for (uint32 d = 0; d < slot.m_Size; d++)
+				{
+					total_table_descriptors += resource_table_items[d].m_NumElements;
+				}
+				resource_table_items += slot.m_Size;
 			}
-			resource_table_items += slot.m_Size;
-
-			VkDescriptorSetLayoutCreateInfo layout_info = {};
-			layout_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-			layout_info.bindingCount = slot.m_Size;
-			layout_info.pBindings = bindings;
-
-			VkResult res = vkCreateDescriptorSetLayout(device->m_Device, &layout_info, VK_NULL_HANDLE, &descriptor_set_layouts[num_descriptor_sets]);
-			ASSERT(res == VK_SUCCESS);
-
-			++num_descriptor_sets;
-			break;
 		}
-		default:
-			ASSERT(false);
+
+		ASSERT(blob.m_Size == size_t((char*)resource_table_items - (char*)root));
+		// Reset pointer for reiteration
+		resource_table_items = (const SVulkanResourceTableItem*)((char*)root + root_slots_size);
+
+		VkPushConstantRange range;
+		range.stageFlags = VK_SHADER_STAGE_ALL;
+		range.offset = 0;
+		range.size = 0;
+
+		if (max_table_size)
+		{
+			size_t size = max_table_size * sizeof(VkDescriptorSetLayoutBinding);
+			bindings = (VkDescriptorSetLayoutBinding*)alloca(size);
+			memset(bindings, 0, size);
 		}
+
+		static const VkDescriptorType descriptor_types[] =
+		{
+			VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, // ROOT_CONST
+			VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
+			VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+			VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
+			VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+			VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+			VK_DESCRIPTOR_TYPE_SAMPLER,
+		};
+
+		uint32 num_descriptor_sets = 0;
+		for (uint32 i = 0; i < num_slots; i++)
+		{
+			const SVulkanRootSlot& slot = root->m_Slots[i];
+
+			switch (slot.m_Type)
+			{
+			case CONSTANT:
+				range.size += slot.m_Size * sizeof(uint32);
+				break;
+			case CBV:
+			{
+				VkDescriptorSetLayoutBinding ubo_binding = {};
+				ubo_binding.binding = 0;
+				ubo_binding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
+				ubo_binding.descriptorCount = 1;
+				ubo_binding.stageFlags = VK_SHADER_STAGE_ALL;//VK_SHADER_STAGE_ALL_GRAPHICS;
+
+				VkDescriptorSetLayoutCreateInfo layout_info = {};
+				layout_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+				layout_info.bindingCount = 1;
+				layout_info.pBindings = &ubo_binding;
+
+				VkResult res = vkCreateDescriptorSetLayout(device->m_Device, &layout_info, VK_NULL_HANDLE, &descriptor_set_layouts[num_descriptor_sets]);
+				ASSERT(res == VK_SUCCESS);
+
+				++num_descriptor_sets;
+				break;
+			}
+			case RESOURCE_TABLE:
+			case SAMPLER_TABLE:
+			{
+				for (uint j = 0; j < slot.m_Size; j++)
+				{
+					bindings[j].binding = j;
+					bindings[j].descriptorType = descriptor_types[resource_table_items[j].m_Type];
+					bindings[j].descriptorCount = resource_table_items[j].m_NumElements;
+					bindings[j].stageFlags = VK_SHADER_STAGE_ALL;//VK_SHADER_STAGE_ALL_GRAPHICS;
+				}
+				resource_table_items += slot.m_Size;
+
+				VkDescriptorSetLayoutCreateInfo layout_info = {};
+				layout_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+				layout_info.bindingCount = slot.m_Size;
+				layout_info.pBindings = bindings;
+
+				VkResult res = vkCreateDescriptorSetLayout(device->m_Device, &layout_info, VK_NULL_HANDLE, &descriptor_set_layouts[num_descriptor_sets]);
+				ASSERT(res == VK_SUCCESS);
+
+				++num_descriptor_sets;
+				break;
+			}
+			default:
+				ASSERT(false);
+			}
+		}
+
+
+		if (range.size)
+		{
+			pipeline_layout_create_info.pushConstantRangeCount = 1;
+			pipeline_layout_create_info.pPushConstantRanges = &range;
+		}
+
+		if (num_descriptor_sets)
+		{
+			pipeline_layout_create_info.setLayoutCount = num_descriptor_sets;
+			pipeline_layout_create_info.pSetLayouts = descriptor_set_layouts;
+		}
+		// Reset pointer for reiteration
+		resource_table_items = (const SVulkanResourceTableItem*)((char*)root + root_slots_size);
 	}
-
-
-	if (range.size)
-	{
-		pipeline_layout_create_info.pushConstantRangeCount = 1;
-		pipeline_layout_create_info.pPushConstantRanges = &range;
-	}
-
-	if (num_descriptor_sets)
-	{
-		pipeline_layout_create_info.setLayoutCount = num_descriptor_sets;
-		pipeline_layout_create_info.pSetLayouts = descriptor_set_layouts;
-	}
-
 	VkPipelineLayout pipeline_layout = VK_NULL_HANDLE;
 	VkResult res = vkCreatePipelineLayout(device->m_Device, &pipeline_layout_create_info, VK_NULL_HANDLE, &pipeline_layout);
 	ASSERT(res == VK_SUCCESS);
 
-
-	// Reset pointer for reiteration
-	resource_table_items = (const SVulkanResourceTableItem*) ((char*) root + root_slots_size);
-
 	RootSignature root_sig = new SRootSignature();
 	root_sig->m_PipelineLayout = pipeline_layout;
-	root_sig->m_SlotCount = num_slots;
-	root_sig->m_Slots = new SRootSignature::SRootSlot[num_slots];
+	root_sig->m_SlotCount = root->m_NumSlots;
+	if(root_sig->m_SlotCount)
+		root_sig->m_Slots = new SRootSignature::SRootSlot[root->m_NumSlots];
 
 	uint32 push_constant_offset = 0;
 	uint32 descriptor_set = 0;
-	for (uint32 i = 0; i < num_slots; i++)
+	for (uint32 i = 0; i < root->m_NumSlots; i++)
 	{
 		SRootSignature::SRootSlot& slot = root_sig->m_Slots[i];
 		const ItemType type = root->m_Slots[i].m_Type;

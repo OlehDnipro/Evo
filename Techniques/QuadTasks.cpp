@@ -93,7 +93,7 @@ void CPolygonTask::Draw(Context context)
 	SetPipeline(context, m_Pipeline);
 	m_Collection->Draw(context, m_Cache, 0);
 }
-void CPolygonTask::SetPassParameters(Device device, RenderPass pass)
+void CPolygonTask::SetPassParameters(RenderPass pass)
 {
 	if (!m_Pipeline)
 	{
@@ -113,10 +113,10 @@ void CPolygonTask::SetPassParameters(Device device, RenderPass pass)
 
 		p_params.m_PrimitiveType = m_Collection->GetPrimType();
 
-		p_params.m_BlendState = GetDefaultBlendState(device);
+		p_params.m_BlendState = GetDefaultBlendState(m_Device);
 		p_params.m_DepthTest = false;
 		p_params.m_DepthWrite = false;
-		m_Pipeline = CreatePipeline(device, p_params);
+		m_Pipeline = CreatePipeline(m_Device, p_params);
 	}
 }
 
@@ -133,7 +133,7 @@ void CWaterDropTask::Draw(Context context)
 	SetPipeline(context, m_Pipeline);
 	m_Collection->Draw(context, m_Cache, 0);
 }
-void CWaterDropTask::SetPassParameters(Device device, RenderPass pass)
+void CWaterDropTask::SetPassParameters(RenderPass pass)
 {
 	if (!m_Pipeline)
 	{
@@ -153,9 +153,9 @@ void CWaterDropTask::SetPassParameters(Device device, RenderPass pass)
 
 		p_params.m_PrimitiveType = m_Collection->GetPrimType();
 
-		p_params.m_BlendState = GetDefaultBlendState(device);
+		p_params.m_BlendState = GetDefaultBlendState(m_Device);
 		p_params.m_DepthTest = false;
 		p_params.m_DepthWrite = false;
-		m_Pipeline = CreatePipeline(device, p_params);
+		m_Pipeline = CreatePipeline(m_Device, p_params);
 	}
 }

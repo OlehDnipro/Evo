@@ -38,9 +38,8 @@ class CPolygonTask : public CRenderTask
 {
 public:
 	virtual bool CreateResources(Device device);
-	virtual void DestroyResources(Device device);
 	virtual void Draw(Context context);
-	void SetPassParameters(Device device, RenderPass pass);
+	void SetPassParameters(RenderPass pass);
 private:
 	Pipeline m_Pipeline;
 };
@@ -49,9 +48,8 @@ class CWaterDropTask : public CRenderTask
 {
 public:
 	virtual bool CreateResources(Device device);
-	virtual void DestroyResources(Device device);
 	virtual void Draw(Context context);
-	void SetPassParameters(Device device, RenderPass pass);
+	void SetPassParameters(RenderPass pass);
 private:
 	Pipeline m_Pipeline;
 };
