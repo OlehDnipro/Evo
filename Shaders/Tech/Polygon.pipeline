@@ -15,7 +15,7 @@ ROOT_END
 
 void main(VertexIn vert, out PixelIn res) 
 {
-	res.pos = float4(vert.pos,0,0);
+	res.pos = float4(vert.pos,0,1);
 }
 
 [Pixel: PS]

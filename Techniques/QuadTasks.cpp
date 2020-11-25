@@ -52,7 +52,7 @@ CTexturedQuadGeometry::~CTexturedQuadGeometry()
 void CPolygonGeometry::Draw(Context context, CShaderCache& cache, int resources_slot)
 {
 	SetVertexSetup(context, m_VertexSetup);
-	::Draw(context, 0, 2);
+	::Draw(context, 0, m_sideCount);
 }
 
 void CPolygonGeometry::DefineVertexFormat(vector<AttribDesc>& format)
