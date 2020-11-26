@@ -52,4 +52,5 @@ public:
 	void SetPassParameters(RenderPass pass);
 private:
 	Pipeline m_Pipeline;
+	SamplerTable m_SamplerTable;
 };

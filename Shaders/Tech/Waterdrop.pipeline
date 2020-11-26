@@ -25,11 +25,33 @@ ROOT_END
 void main(VertexIn vert, out PixelIn res) 
 {
 	res.uv = vert.uv;
-	res.pos = float4(vert.pos,0,0);
+	res.pos = float4(vert.pos,0,1);
 }
 
 [Pixel: PS]
 void main(PixelIn pix, out float4 outFragColor: SV_TARGET)
 {
-	outFragColor = float4(0.5,0,0,1);
+	float4 hv = MyTexture.Sample(ColorSampler, pix.uv);
+	
+	float off = 1.0/512;
+	float  s1 = MyTexture.Sample(ColorSampler, pix.uv + float2(-off, -off)).r;
+	float  s2 = MyTexture.Sample(ColorSampler, pix.uv + float2(-off,  off)).r;
+	float  s3 = MyTexture.Sample(ColorSampler, pix.uv + float2( off, -off)).r;
+	float  s4 = MyTexture.Sample(ColorSampler, pix.uv + float2( off,  off)).r;
+	
+	float f = s1 + s2 + s3 + s4 - 4 * hv.x;
+
+	hv -= 0.5;
+
+	hv.y += 0.1 * f;
+	hv.x += 0.6 * hv.y;
+
+	hv *= 0.985;
+
+	hv.z = 0.25 * (s1 + s2 - s3 - s4); // sobelX
+	hv.w = 0.25 * (s1 - s2 + s3 - s4); // sobelY
+
+	hv += 0.5;
+
+	outFragColor = hv;
 } 

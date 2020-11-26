@@ -25,7 +25,7 @@ void CTexturedQuadGeometry::Draw(Context context, CShaderCache& cache, int resou
 
 	SetVertexSetup(context, m_VertexSetup); 
 	//PRIM_TRIANGLE_FAN
-	::Draw(context, 0, 2);
+	::Draw(context, 0, 4);
 }
 void CTexturedQuadGeometry::Create(Device device)
 {
@@ -124,14 +124,24 @@ void CPolygonTask::SetPassParameters(RenderPass pass)
 bool CWaterDropTask::CreateResources(Device device)
 {
     m_Device = device;
-    return  m_Cache.CreateRootSignature(m_Device, NWaterdrop::RootSig, nullptr);
+
+	if (m_Cache.CreateRootSignature(m_Device, NWaterdrop::RootSig, nullptr))
+	{
+		const SSamplerDesc samplers[] = { { FILTER_TRILINEAR, 1, AM_WRAP, AM_WRAP, AM_WRAP, ALWAYS } };
+		if ((m_SamplerTable = CreateSamplerTable(m_Device, m_Cache.GetRootSignature(), NWaterdrop::Samplers, samplers)) == nullptr)
+			return false;
+
+		return true;
+	}
+	return false;
 }
 
 void CWaterDropTask::Draw(Context context)
 {
 	SetRootSignature(context, m_Cache.GetRootSignature());
 	SetPipeline(context, m_Pipeline);
-	m_Collection->Draw(context, m_Cache, 0);
+	SetGraphicsSamplerTable(context, NWaterdrop::Samplers, m_SamplerTable);
+	m_Collection->Draw(context, m_Cache, NWaterdrop::Resources);
 }
 void CWaterDropTask::SetPassParameters(RenderPass pass)
 {
