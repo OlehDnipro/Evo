@@ -78,7 +78,7 @@ class IParameterProvider
 public:
 	virtual uint32_t GetLayoutId() = 0;
 	uint8_t* GetBaseParameterPointer() { return &m_pBase; }
-	virtual void PrepareConstantBuffer(Context context, uint8_t* paramPtr) {};
+	virtual void PrepareConstantBuffer(Context context, SResourceDesc* paramPtr) {};
 protected:
 	uint8_t m_pBase;
 };
@@ -90,28 +90,22 @@ protected:
 public:
 	uint32_t GetLayoutId() { return m_Layout.GetId(); };
 };
-struct SConstantBuffer
-{
-	Buffer buffer;
-	uint offset,size;
-};
 
 template<class T>
 class CConstantParameter
 {
-	SConstantBuffer m_param;
+	SResourceDesc m_param;
 	T m_data;
 public:
 	T& Get() { return m_data; }
 	void PrepareBuffer(Context context)
 	{
-		m_param.offset = AllocateConstantsSlice(context, sizeof(T));
-		m_param.buffer = GetConstantBuffer(context);
-		m_param.size = sizeof(T);
-		uint8* gpuDest =  GetConstantBufferData(context, m_param.offset);
+		uint offset = AllocateConstantsSlice(context, sizeof(T));
+		m_param = { GetConstantBuffer(context), { offset, sizeof(T) } };
+		uint8* gpuDest =  GetConstantBufferData(context, m_param.m_bufRange.offset);
 		memcpy(gpuDest, &m_data, sizeof(T));
 	}
-	SConstantBuffer* GetPtr() { return &m_param; }
+	SResourceDesc* GetPtr() { return &m_param; }
 };
 struct SPerModel
 {
@@ -122,7 +116,7 @@ struct SPerModel
 class CModelParameterProvider : public CParameterProviderBase<CModelParameterProvider>
 {
 public:
-	Texture m_ModelTexture;
+	SResourceDesc m_ModelTexture;
 	CConstantParameter<SPerModel> m_ModelConst;
 	static void CreateParameterMap()
 	{
@@ -131,7 +125,7 @@ public:
 		m_Layout.AddParameter("ModelTexture", (uint8_t*)&p.m_ModelTexture - (uint8_t*)&p.m_pBase);
 	}
 	SPerModel& Get() { return m_ModelConst.Get(); }
-	void PrepareConstantBuffer(Context context, uint8_t* param) { m_ModelConst.PrepareBuffer(context); }
+	void PrepareConstantBuffer(Context context, SResourceDesc* param) { m_ModelConst.PrepareBuffer(context); }
 };
 class SimpleObjectInstance;
 class SimpleObject

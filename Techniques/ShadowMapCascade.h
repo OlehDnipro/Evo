@@ -24,29 +24,29 @@ struct SShadow
 class CViewportParameterProvider : public CParameterProviderBase<CViewportParameterProvider>
 {
 public:
-	CConstantParameter<SPerFrame> m_ModelConst;
+	CConstantParameter<SPerFrame> m_Const;
 	static void CreateParameterMap()
 	{
 		CViewportParameterProvider p;
-		m_Layout.AddParameter(SPerFrame::GetName(), (uint8_t*)p.m_ModelConst.GetPtr() - (uint8_t*)&p.m_pBase);
+		m_Layout.AddParameter(SPerFrame::GetName(), (uint8_t*)p.m_Const.GetPtr() - (uint8_t*)&p.m_pBase);
 	}
-	SPerFrame& Get() { return m_ModelConst.Get(); }
-	void PrepareConstantBuffer(Context context, uint8_t* param) { m_ModelConst.PrepareBuffer(context); }
+	SPerFrame& Get() { return m_Const.Get(); }
+	void PrepareConstantBuffer(Context context, SResourceDesc* param) { m_Const.PrepareBuffer(context); }
 };
 
 class CShadowParameterProvider: public CParameterProviderBase<CShadowParameterProvider>
 {
 public:
-	Texture m_ShadowCascades;
-	CConstantParameter<SShadow> m_ModelConst;
+	SResourceDesc m_ShadowCascades;
+	CConstantParameter<SShadow> m_Const;
 	static void CreateParameterMap()
 	{
 		CShadowParameterProvider p;
-		m_Layout.AddParameter(SShadow::GetName(), (uint8_t*)p.m_ModelConst.GetPtr() - (uint8_t*)&p.m_pBase);
+		m_Layout.AddParameter(SShadow::GetName(), (uint8_t*)p.m_Const.GetPtr() - (uint8_t*)&p.m_pBase);
 		m_Layout.AddParameter("ShadowMapCascades", (uint8_t*)&p.m_ShadowCascades - (uint8_t*)&p.m_pBase);
 	}
-	SShadow& Get() { return m_ModelConst.Get(); }
-	void PrepareConstantBuffer(Context context, uint8_t* param) { m_ModelConst.PrepareBuffer(context); }
+	SShadow& Get() { return m_Const.Get(); }
+	void PrepareConstantBuffer(Context context, SResourceDesc* param) { m_Const.PrepareBuffer(context); }
 
 };
 

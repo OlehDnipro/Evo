@@ -318,35 +318,38 @@ enum ResourceType
 	RESTYPE_TEXTURE,
 	RESTYPE_BUFFER,
 };
+struct STextureSubresourceDesc
+{
+	int slice = -1;
+	//int face = -1;
+	//todo:add cubemapsupport
+	int mip = -1;
+	uint flags = 0;
+};
+
+struct SBufferRangeDesc
+{
+	uint offset;
+	uint size;
+};
 
 struct SResourceDesc
 {
 	SResourceDesc() = default;
 
-	SResourceDesc(const Texture texture) : m_Resource(texture), m_Type(RESTYPE_TEXTURE)
+	SResourceDesc(const Texture texture, const STextureSubresourceDesc desc = {-1, -1, 0}) : m_Resource(texture), m_texRange(desc),m_Type(RESTYPE_TEXTURE)
 	{
 	}
-	SResourceDesc(const Buffer buffer) : m_Resource(buffer), m_Type(RESTYPE_BUFFER)
+	SResourceDesc(const Buffer buffer, const SBufferRangeDesc desc = {}) : m_Resource(buffer), m_bufRange(desc), m_Type(RESTYPE_BUFFER)
 	{
 	}
 
 	const void* m_Resource;
 	ResourceType m_Type;
-	struct TextureViewDesc
-	{
 
-	};
-	struct BufferViewDesc
-	{
-		uint offset;
-		uint size;
-	};
-	typedef union
-	{
-		TextureViewDesc tView;
-		BufferViewDesc bView;
-	} ViewDesc;
-	ViewDesc m_Desc = {};
+	STextureSubresourceDesc m_texRange;
+	SBufferRangeDesc m_bufRange;
+
 };
 void UpdateResourceTable(Device device, RootSignature root, uint32 slot, ResourceTable table, const SResourceDesc* resources, uint offset, uint count);
 no_inline ResourceTable CreateResourceTable(Device device, RootSignature root, uint32 slot, const SResourceDesc* resources, uint count, Context onframe = nullptr);
@@ -631,4 +634,5 @@ void UAVBarrier(Context context, Buffer buffer = nullptr);
 void Barrier(Context context, const SBarrierDesc* barriers, uint count);
 template<int N> force_inline void Barrier(Context context, const SBarrierDesc(&barriers)[N]) { Barrier(context, barriers, N); }
 void IterateRootSignature(RootSignature root, void* callback, void* receiver);
+
 

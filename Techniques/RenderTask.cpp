@@ -88,19 +88,17 @@ void CShaderCache::GatherParameters(Context context, IParameterProvider** provid
 				{
 				case TEXTURE:
 				case RWTEXTURE:
-					write = *(Texture*)(providers[i]->GetBaseParameterPointer() + param.m_provMemOffset);
+					write = *(SResourceDesc*)(providers[i]->GetBaseParameterPointer() + param.m_provMemOffset);
 
 					break;
 
 				case STRUCTUREDBUFFER:
 				case RWSTRUCTUREDBUFFER:
-					write = *(Buffer*)(providers[i]->GetBaseParameterPointer() + param.m_provMemOffset);
+					write = *(SResourceDesc*)(providers[i]->GetBaseParameterPointer() + param.m_provMemOffset);
 				case CBV:
-					SConstantBuffer* constants = (SConstantBuffer*)(providers[i]->GetBaseParameterPointer() + param.m_provMemOffset);
-					providers[i]->PrepareConstantBuffer(context, (uint8_t*)constants);
-					write = constants->buffer;
-					write.m_Desc.bView.offset = constants->offset;
-					write.m_Desc.bView.size = constants->size;
+					SResourceDesc* constants = (SResourceDesc*)(providers[i]->GetBaseParameterPointer() + param.m_provMemOffset);
+					providers[i]->PrepareConstantBuffer(context, constants);
+					write = *constants;
 
 				}
 			}

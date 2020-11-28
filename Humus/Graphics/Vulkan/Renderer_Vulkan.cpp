@@ -28,8 +28,6 @@
 #pragma comment (lib, "vulkan-1.lib")
 
 #include <stdio.h>
-
-
 //#ifdef DEBUG
 #define USE_DEBUG_MARKERS
 #define USE_DEBUG_UTILS
@@ -200,11 +198,28 @@ static const VkFormat g_AttribFormats[] =
 	VK_FORMAT_R32G32B32A32_UINT,
 };
 
+enum TexViewType
+{
+	SRV,
+	UAV,
+	RTV,
+	DSV
+};
+
+struct STextureSubresource
+{
+	STexture* m_Owner;
+	VkImageSubresourceRange m_Range;
+	VkImageView m_ImageView;
+	EResourceState m_State;	
+};
+
 
 struct STexture
 {
 	VkImage m_Image;
-	VkImageView m_ImageView;
+	STextureSubresource** m_Subresources;
+	EResourceState m_State;
 
 	uint m_Width;
 	uint m_Height;
@@ -213,9 +228,60 @@ struct STexture
 	uint m_MipLevels;
 	TextureType m_Type;
 	ImageFormat m_Format;
-	EResourceState m_State;
 	VkDeviceMemory m_Memory;
 };
+
+STextureSubresource* AcquireSubresource(STexture* texture, const STextureSubresourceDesc& desc)
+{
+	STextureSubresource** ptr;
+	if (desc.slice == -1)
+	{
+		ptr = &texture->m_Subresources[0];
+	}
+	else if (desc.mip == -1)
+	{
+		ptr = &texture->m_Subresources[1 + desc.slice];
+	}
+	else
+	{
+		ptr = &texture->m_Subresources[1 + texture->m_Slices + texture->m_MipLevels * desc.slice + desc.mip];
+	}
+	if (!(*ptr))
+	{
+		*ptr = new STextureSubresource;
+		(*ptr)->m_Owner = texture;
+		(*ptr)->m_Range.baseMipLevel = desc.mip >= 0 ? desc.mip : 0;
+		(*ptr)->m_Range.levelCount = desc.mip >= 0 ? 1 : texture->m_MipLevels;
+		(*ptr)->m_Range.baseArrayLayer = desc.slice >= 0 ? desc.slice : 0;
+		(*ptr)->m_Range.layerCount = desc.slice >= 0 ? 1 : texture->m_Slices;
+		(*ptr)->m_Range.aspectMask = IsDepthFormat(texture->m_Format) ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT;
+		(*ptr)->m_ImageView = VK_NULL_HANDLE;
+	}
+
+	return *ptr;
+}
+
+VkImageView AcquireSubresourceView(Device device, STextureSubresource* sub, TexViewType type, uint flags)
+{
+	if (sub->m_ImageView)
+		return sub->m_ImageView;
+	else
+	{
+		//todo: add stencil support
+		//todo: add cubemap support
+		VkImageViewCreateInfo view_create_info = {};
+		view_create_info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+		view_create_info.image = sub->m_Owner->m_Image;
+		view_create_info.viewType = g_TextureTypes[sub->m_Owner->m_Type];
+		view_create_info.format = g_Formats[sub->m_Owner->m_Format];
+		view_create_info.components = { VK_COMPONENT_SWIZZLE_R, VK_COMPONENT_SWIZZLE_G, VK_COMPONENT_SWIZZLE_B, VK_COMPONENT_SWIZZLE_A };
+		view_create_info.subresourceRange = sub->m_Range;
+
+		VkResult res = vkCreateImageView(device->m_Device, &view_create_info, VK_NULL_HANDLE, &sub->m_ImageView);
+		ASSERT(res == VK_SUCCESS);
+		return sub->m_ImageView;
+	}
+}
 
 struct SResourceTable
 {
@@ -1214,9 +1280,6 @@ Texture CreateTexture(Device device, const STextureParams& params)
 	res = vkBindImageMemory(device->m_Device, image, memory, 0);
 	ASSERT(res == VK_SUCCESS);
 
-
-
-
 	Texture texture = new STexture();
 	texture->m_Image     = image;
 	texture->m_Width     = params.m_Width;
@@ -1227,7 +1290,9 @@ Texture CreateTexture(Device device, const STextureParams& params)
 	texture->m_Type      = params.m_Type;
 	texture->m_Format    = params.m_Format;
 	texture->m_Memory    = memory;
-
+	uint size = texture->m_Slices * (texture->m_MipLevels + 1) + 1;///add cubemap, i.e faces, support
+	texture->m_Subresources = new STextureSubresource * [size];
+	memset(texture->m_Subresources, 0, sizeof(STextureSubresource*) * size);
 	return texture;
 }
 
@@ -1237,7 +1302,7 @@ void DestroyTexture(Device device, Texture& texture)
 	{
 		vkFreeMemory(device->m_Device, texture->m_Memory, VK_NULL_HANDLE);
 
-		vkDestroyImageView(device->m_Device, texture->m_ImageView, VK_NULL_HANDLE);
+		//vkDestroyImageView(device->m_Device, texture->m_ImageView, VK_NULL_HANDLE);
 		vkDestroyImage(device->m_Device, texture->m_Image, VK_NULL_HANDLE);
 
 		delete texture;
@@ -1274,30 +1339,11 @@ void UpdateResourceTable(Device device, RootSignature root, uint32 slot, Resourc
 			ASSERT(resources[i].m_Type == RESTYPE_TEXTURE);
 
 			Texture texture = (Texture)resources[i].m_Resource;
-			if (texture->m_ImageView == VK_NULL_HANDLE)
-			{
-				VkImageViewCreateInfo view_info = {};
-				view_info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-				view_info.pNext = VK_NULL_HANDLE;
-				view_info.format = g_Formats[texture->m_Format];
-				view_info.components = { VK_COMPONENT_SWIZZLE_R, VK_COMPONENT_SWIZZLE_G, VK_COMPONENT_SWIZZLE_B, VK_COMPONENT_SWIZZLE_A };
-				view_info.subresourceRange.aspectMask = IsDepthFormat(texture->m_Format) ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT;
-				view_info.subresourceRange.baseMipLevel = 0;
-				view_info.subresourceRange.levelCount = texture->m_MipLevels;
-				view_info.subresourceRange.baseArrayLayer = 0;
-				view_info.subresourceRange.layerCount = texture->m_Slices;
-				view_info.viewType = g_TextureTypes[texture->m_Type];
-				view_info.flags = 0;
-				view_info.image = texture->m_Image;
-
-				res = vkCreateImageView(device->m_Device, &view_info, VK_NULL_HANDLE, &texture->m_ImageView);
-				ASSERT(res == VK_SUCCESS);
-			}
-
+			STextureSubresource* subRes = AcquireSubresource(texture, resources[i].m_texRange);
 			descriptor_write.descriptorType = (item.m_Type == TEXTURE) ? VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE : VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
 			descriptor_write.pImageInfo = &image_info;
 			descriptor_write.pBufferInfo = VK_NULL_HANDLE;
-			image_info.imageView = texture->m_ImageView;
+			image_info.imageView = AcquireSubresourceView(device, subRes, item.m_Type == TEXTURE ? TexViewType::SRV : TexViewType::UAV, 0);
 			image_info.imageLayout = (item.m_Type == TEXTURE) ? (IsDepthFormat(texture->m_Format)? VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL:VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL )
                                                                  : VK_IMAGE_LAYOUT_GENERAL;
 			break;
@@ -1327,8 +1373,8 @@ void UpdateResourceTable(Device device, RootSignature root, uint32 slot, Resourc
 			descriptor_write.pBufferInfo = &buffer_info;
 
 			buffer_info.buffer = buffer->m_Buffer;
-			buffer_info.offset = resources[i].m_Desc.bView.offset;
-			buffer_info.range = resources[i].m_Desc.bView.size;
+			buffer_info.offset = resources[i].m_bufRange.offset;
+			buffer_info.range = resources[i].m_bufRange.size;
 			break;
 		}
 		default:
