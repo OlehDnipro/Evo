@@ -238,7 +238,7 @@ public:
 	void DrawFrame(Context context, uint buffer_index)
 	{
         static bool init = false;
-        Barrier(context, { { m_ShadowMap, GetCurrentState(m_ShadowMap), EResourceState::RS_RENDER_TARGET} });
+        Barrier(context, { { m_ShadowMap,  EResourceState::RS_RENDER_TARGET} });
 		for (int i = 0; i < SHADOW_MAP_CASCADE_COUNT; i++)
 		{
 			BeginRenderPass(context, "Shadow", m_RenderPassShadow, m_ShadowSetup[i], float4(0, 0, 0, 0));
@@ -246,15 +246,15 @@ public:
 			m_Shadows.Draw(context);
 			EndRenderPass(context, m_ShadowSetup[i]);
 		}
-        Barrier(context, { { m_ShadowMap, GetCurrentState(m_ShadowMap), EResourceState::RS_SHADER_READ} });
+        Barrier(context, { { m_ShadowMap,  EResourceState::RS_SHADER_READ} });
 
         Texture bb = GetBackBuffer(GetDevice(), buffer_index);
-        Barrier(context, { {bb , GetCurrentState(bb), EResourceState::RS_RENDER_TARGET} });
+        Barrier(context, { {bb , EResourceState::RS_RENDER_TARGET} });
 		BeginRenderPass(context, "Backbuffer", m_RenderPassMain, m_RenderSetup[buffer_index], float4(0, 0, 0, 0));
 		m_Shadows.SetPassParameters(m_RenderPassMain, ShadowMapCascade::MainPass);
 		m_Shadows.Draw(context);
 		EndRenderPass(context, m_RenderSetup[buffer_index]);
-        Barrier(context, { { bb , GetCurrentState(bb), EResourceState::RS_PRESENT} });
+        Barrier(context, { { bb , EResourceState::RS_PRESENT} });
 	};
 };
 static DemoApp *app = nullptr; // Should come up with something prettier than this

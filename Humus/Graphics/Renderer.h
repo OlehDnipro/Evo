@@ -617,17 +617,12 @@ struct SBarrierDesc
 {
 	SBarrierDesc() = default;
 
-	SBarrierDesc(const Texture texture, EResourceState before, EResourceState after) : m_Resource(texture), m_Type(RESTYPE_TEXTURE), m_Before(before), m_After(after)
-	{
-	}
-	SBarrierDesc(const Buffer buffer, EResourceState before, EResourceState after) : m_Resource(buffer), m_Type(RESTYPE_BUFFER), m_Before(before), m_After(after)
+	SBarrierDesc(const SResourceDesc& resource, EResourceState state) : m_Desc(resource), m_Transition(state)
 	{
 	}
 
-	const void* m_Resource;
-	ResourceType m_Type;
-	EResourceState m_Before;
-	EResourceState m_After;
+	const SResourceDesc& m_Desc;
+	EResourceState m_Transition;
 };
 
 void UAVBarrier(Context context, Buffer buffer = nullptr);

@@ -26,7 +26,7 @@
 #define VK_USE_PLATFORM_WIN32_KHR
 #include <vulkan/vulkan.h>
 #pragma comment (lib, "vulkan-1.lib")
-
+#include <assert.h>
 #include <stdio.h>
 //#ifdef DEBUG
 #define USE_DEBUG_MARKERS
@@ -209,6 +209,7 @@ enum TexViewType
 struct STextureSubresource
 {
 	STexture* m_Owner;
+	STextureSubresource* m_Faces;//for cubemaps only 
 	VkImageSubresourceRange m_Range;
 	VkImageView m_ImageView;
 	EResourceState m_State;	
@@ -219,7 +220,6 @@ struct STexture
 {
 	VkImage m_Image;
 	STextureSubresource** m_Subresources;
-	EResourceState m_State;
 
 	uint m_Width;
 	uint m_Height;
@@ -233,19 +233,16 @@ struct STexture
 
 STextureSubresource* AcquireSubresource(STexture* texture, const STextureSubresourceDesc& desc)
 {
-	STextureSubresource** ptr;
-	if (desc.slice == -1)
+	if (!texture->m_Subresources)
 	{
-		ptr = &texture->m_Subresources[0];
+		uint size = texture->m_Slices * (texture->m_MipLevels + 1) + 1;
+		texture->m_Subresources = new STextureSubresource * [size];
+		memset(texture->m_Subresources, 0, sizeof(STextureSubresource*) * size);
 	}
-	else if (desc.mip == -1)
-	{
-		ptr = &texture->m_Subresources[1 + desc.slice];
-	}
-	else
-	{
-		ptr = &texture->m_Subresources[1 + texture->m_Slices + texture->m_MipLevels * desc.slice + desc.mip];
-	}
+
+	assert(desc.slice >= 0 || desc.mip == -1);
+	uint index = (desc.slice + 1) + (desc.mip >= 0) *(texture->m_MipLevels*desc.slice + desc.mip);
+	STextureSubresource** ptr =	&texture->m_Subresources[index];
 	if (!(*ptr))
 	{
 		*ptr = new STextureSubresource;
@@ -256,6 +253,7 @@ STextureSubresource* AcquireSubresource(STexture* texture, const STextureSubreso
 		(*ptr)->m_Range.layerCount = desc.slice >= 0 ? 1 : texture->m_Slices;
 		(*ptr)->m_Range.aspectMask = IsDepthFormat(texture->m_Format) ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT;
 		(*ptr)->m_ImageView = VK_NULL_HANDLE;
+		(*ptr)->m_Faces = nullptr;
 	}
 
 	return *ptr;
@@ -1290,9 +1288,7 @@ Texture CreateTexture(Device device, const STextureParams& params)
 	texture->m_Type      = params.m_Type;
 	texture->m_Format    = params.m_Format;
 	texture->m_Memory    = memory;
-	uint size = texture->m_Slices * (texture->m_MipLevels + 1) + 1;///add cubemap, i.e faces, support
-	texture->m_Subresources = new STextureSubresource * [size];
-	memset(texture->m_Subresources, 0, sizeof(STextureSubresource*) * size);
+
 	return texture;
 }
 
@@ -1343,7 +1339,7 @@ void UpdateResourceTable(Device device, RootSignature root, uint32 slot, Resourc
 			descriptor_write.descriptorType = (item.m_Type == TEXTURE) ? VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE : VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
 			descriptor_write.pImageInfo = &image_info;
 			descriptor_write.pBufferInfo = VK_NULL_HANDLE;
-			image_info.imageView = AcquireSubresourceView(device, subRes, item.m_Type == TEXTURE ? TexViewType::SRV : TexViewType::UAV, 0);
+			image_info.imageView = AcquireSubresourceView(device, subRes, item.m_Type == RESTYPE_TEXTURE ? TexViewType::SRV : TexViewType::UAV, 0);
 			image_info.imageLayout = (item.m_Type == TEXTURE) ? (IsDepthFormat(texture->m_Format)? VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL:VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL )
                                                                  : VK_IMAGE_LAYOUT_GENERAL;
 			break;
@@ -2954,14 +2950,9 @@ static VkImageLayout GetImageLayout(EResourceState state, bool depth)
 		return VK_IMAGE_LAYOUT_UNDEFINED;
 	};
 }
-EResourceState GetCurrentState(Texture texture)
+EResourceState GetCurrentState(const SResourceDesc resource)
 {
-	return texture->m_State;
-}
-
-EResourceState GetCurrentState(Buffer buffer)
-{
-	return buffer->m_State;
+	return resource.m_Type == RESTYPE_TEXTURE?AcquireSubresource((Texture)resource.m_Resource, resource.m_texRange)->m_State:((Buffer)resource.m_Resource)->m_State;
 }
 
 void Barrier(Context context, const SBarrierDesc* barriers, uint count)
@@ -2977,16 +2968,17 @@ void Barrier(Context context, const SBarrierDesc* barriers, uint count)
 
     for (uint i = 0; i < count; i++)
     {
-        if (barriers[i].m_Type == RESTYPE_TEXTURE)
+		EResourceState before = GetCurrentState(barriers[i].m_Desc);
+        if (barriers[i].m_Desc.m_Type == RESTYPE_TEXTURE)
 		{
-            const Texture texture = (Texture)barriers[i].m_Resource;
+            const Texture texture = (Texture)barriers[i].m_Desc.m_Resource;
 
-            img_barrier.srcAccessMask = GetFlags(barriers[i].m_Before);
-            img_barrier.dstAccessMask = GetFlags(barriers[i].m_After);
+            img_barrier.srcAccessMask = GetFlags(before);
+            img_barrier.dstAccessMask = GetFlags(barriers[i].m_Transition);
 			bool isDepth = IsDepthFormat(texture->m_Format);
 			img_barrier.subresourceRange.aspectMask = isDepth ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT;
-			img_barrier.oldLayout = GetImageLayout(barriers[i].m_Before, isDepth);
-			img_barrier.newLayout = GetImageLayout(barriers[i].m_After, isDepth);
+			img_barrier.oldLayout = GetImageLayout(before, isDepth);
+			img_barrier.newLayout = GetImageLayout(barriers[i].m_Transition, isDepth);
 
             img_barrier.subresourceRange.baseMipLevel = 0;
             img_barrier.subresourceRange.levelCount = texture->m_MipLevels;
@@ -2996,15 +2988,15 @@ void Barrier(Context context, const SBarrierDesc* barriers, uint count)
             img_barrier.image = texture->m_Image;
 
             image_count++;
-			texture->m_State = barriers[i].m_After;
+			AcquireSubresource(texture, barriers[i].m_Desc.m_texRange)->m_State = barriers[i].m_Transition;
         }
         else
         {
-			const Buffer buffer = (Buffer)barriers[i].m_Resource;
+			const Buffer buffer = (Buffer)barriers[i].m_Desc.m_Resource;
 
-            mem_barrier.srcAccessMask = GetFlags(barriers[i].m_Before);
-            mem_barrier.dstAccessMask = GetFlags(barriers[i].m_After);
-			buffer->m_State = barriers[i].m_After;
+            mem_barrier.srcAccessMask = GetFlags(before);
+            mem_barrier.dstAccessMask = GetFlags(barriers[i].m_Transition);
+			buffer->m_State = barriers[i].m_Transition;
 
         }
     }
