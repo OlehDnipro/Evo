@@ -181,9 +181,6 @@ public:
 		DestroyTexture(m_Device, m_DepthBuffer);
 		DestroyTexture(m_Device, m_ShadowMap);
 
-		DestroyRenderPass(m_Device, m_RenderPassMain);
-		DestroyRenderPass(m_Device, m_RenderPassShadow);
-
 		DestroyRenderSetups();
 	}
 	void DestroyRenderSetups()

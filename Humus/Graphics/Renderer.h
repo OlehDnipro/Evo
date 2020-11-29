@@ -368,16 +368,25 @@ no_inline SamplerTable CreateSamplerTable(Device device, RootSignature root, uin
 template<int N> force_inline SamplerTable CreateSamplerTable(Device device, RootSignature root, uint32 slot, const SSamplerDesc(&samplers)[N], Context onframe = nullptr) { return CreateSamplerTable(device, root, slot, samplers, N, onframe); }
 void DestroySamplerTable(Device device, SamplerTable& table);
 void ResetDescriptorPool(Device device);
-enum RenderPassFlags
+enum RenderPassFlags:uint8
 {
+	FLAG_NONE	  = 0x0,
 	CLEAR_COLOR   = 0x1,
 	CLEAR_DEPTH   = 0x2,
 	FINAL_PRESENT = 0x4,
 };
+struct SRenderPassDesc
+{
+	ImageFormat m_ColorFormats[5];
+	ImageFormat m_DepthFormat;
+	RenderPassFlags m_Flags;
+	uint8 msaa_samples;
+};
+
 inline RenderPassFlags operator | (RenderPassFlags a, RenderPassFlags b) { return RenderPassFlags(int(a) | int(b)); }
 
+RenderPass AcquireRenderPass(Device device, const SRenderPassDesc& desc);
 RenderPass CreateRenderPass(Device device, ImageFormat color_format, ImageFormat depth_format, RenderPassFlags flags, uint msaa_samples = 1);
-void DestroyRenderPass(Device device, RenderPass& render_pass);
 
 RenderSetup CreateRenderSetup(Device device, RenderPass render_pass, Texture* color_targets, uint color_target_count, Texture depth_target = nullptr, Texture resolve_target = nullptr, uint depth_slice = 0);
 void DestroyRenderSetup(Device device, RenderSetup& setup);

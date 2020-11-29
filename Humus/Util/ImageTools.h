@@ -24,7 +24,7 @@
 #include "../Platform.h"
 #include "../SIMD.h"
 
-enum ImageFormat
+enum ImageFormat:uint8
 {
 	IMGFMT_INVALID,
 

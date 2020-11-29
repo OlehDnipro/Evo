@@ -65,7 +65,7 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL VulkanCallback(VkDebugUtilsMessageSeverity
 {
 	return VK_FALSE;
 }
-
+typedef  std::map<uint64, RenderPass> RenderPassDictionary;
 struct SDevice
 {
 	VkDevice m_Device;
@@ -75,6 +75,8 @@ struct SDevice
 	HWND m_Window;
 
 	Context m_MainContext;
+
+	RenderPassDictionary* m_RenderpassDictionary;
 
 	RenderPass m_BackBufferRenderPass;
 	Texture m_BackBuffer[BUFFER_FRAMES];
@@ -226,12 +228,12 @@ union SRangeKey
 	SRange range;
 	uint64 combo;
 };
-
+typedef std::map<uint64, STextureSubresource*> TextureSubresourceDictionary;
 struct STexture
 {
 	VkImage m_Image;
 	STextureSubresource** m_Subresources;
-	std::map<uint64, STextureSubresource*> m_SubresourceDictionary;// to prevent range duplicates
+	TextureSubresourceDictionary* m_SubresourceDictionary;// to prevent range duplicates
 	uint m_Width;
 	uint m_Height;
 	uint m_Depth;
@@ -262,8 +264,8 @@ STextureSubresource* AcquireSubresource(STexture* texture, const STextureSubreso
 		key.range.levelCount = desc.mip >= 0 ? 1 : texture->m_MipLevels;
 		key.range.baseArrayLayer = desc.slice >= 0 ? desc.slice : 0;
 		key.range.layerCount = desc.slice >= 0 ? 1 : texture->m_Slices;
-		auto it = texture->m_SubresourceDictionary.find(key.combo);
-		if (it == texture->m_SubresourceDictionary.end())
+		auto it = texture->m_SubresourceDictionary->find(key.combo);
+		if (it == texture->m_SubresourceDictionary->end())
 		{
 			*ptr = new STextureSubresource;
 			(*ptr)->m_Owner = texture;
@@ -275,7 +277,7 @@ STextureSubresource* AcquireSubresource(STexture* texture, const STextureSubreso
 			(*ptr)->m_ImageView = VK_NULL_HANDLE;
 			(*ptr)->m_Faces = nullptr;
 
-			texture->m_SubresourceDictionary.insert(std::map<uint64, STextureSubresource*>::value_type(key.combo, *ptr));
+			texture->m_SubresourceDictionary->insert(TextureSubresourceDictionary::value_type(key.combo, *ptr));
 		}
 		else
 			*ptr = it->second;
@@ -425,6 +427,7 @@ static bool CreateBackBufferSetups(Device device, uint width, uint height, Image
 				//back_buffer->SetName(L"BackBuffer");
 
 				Texture texture = new STexture();
+				memset(texture, 0, sizeof(STexture));
 				texture->m_Image     = back_buffers[i];
 				texture->m_Width     = width;
 				texture->m_Height    = height;
@@ -433,8 +436,7 @@ static bool CreateBackBufferSetups(Device device, uint width, uint height, Image
 				texture->m_MipLevels = 1;
 				texture->m_Type      = TEX_2D;
 				texture->m_Format    = format;
-				texture->m_Subresources = nullptr;
-				texture->m_Memory = VK_NULL_HANDLE;
+				texture->m_SubresourceDictionary = new TextureSubresourceDictionary;
 
 				device->m_BackBuffer[i] = texture;
 
@@ -878,7 +880,7 @@ Device CreateDevice(DeviceParams& params)
 	device->m_MemoryProperties = memory_properties;
 	device->m_Surface = surface;
 	device->m_Instance = instance;
-
+	device->m_RenderpassDictionary = new RenderPassDictionary;
 
 	// Create swapchain
 	VkSwapchainCreateInfoKHR& swapchain_create_info = device->m_SwapchainCreateInfo;
@@ -1017,6 +1019,7 @@ Device CreateDevice(DeviceParams& params)
 	}
 	return device;
 }
+void DestroyRenderPass(Device device, RenderPass& render_pass);
 
 void DestroyDevice(Device& device)
 {
@@ -1039,8 +1042,6 @@ void DestroyDevice(Device& device)
     }
 	DestroyBackBufferSetups(device);
 
-	DestroyRenderPass(device, device->m_BackBufferRenderPass);
-
 	DestroyContext(device, device->m_MainContext);
 
 	vkDestroySemaphore(device->m_Device, device->m_PresentSemaphore, VK_NULL_HANDLE);
@@ -1055,10 +1056,14 @@ void DestroyDevice(Device& device)
 
 	vkDestroySwapchainKHR(device->m_Device, device->m_SwapChain, VK_NULL_HANDLE);
 	vkDestroySurfaceKHR(device->m_Instance, device->m_Surface, VK_NULL_HANDLE);
-
+	for (auto& pass : *device->m_RenderpassDictionary)
+	{
+		DestroyRenderPass(device, pass.second);
+	}
 	vkDestroyDevice(device->m_Device, VK_NULL_HANDLE);
 	vkDestroyInstance(device->m_Instance, VK_NULL_HANDLE);
 
+	delete device->m_RenderpassDictionary;
 	delete device;
 	device = VK_NULL_HANDLE;
 }
@@ -1306,6 +1311,7 @@ Texture CreateTexture(Device device, const STextureParams& params)
 	ASSERT(res == VK_SUCCESS);
 
 	Texture texture = new STexture();
+	memset(texture, 0, sizeof(STexture));
 	texture->m_Image     = image;
 	texture->m_Width     = params.m_Width;
 	texture->m_Height    = params.m_Height;
@@ -1315,7 +1321,7 @@ Texture CreateTexture(Device device, const STextureParams& params)
 	texture->m_Type      = params.m_Type;
 	texture->m_Format    = params.m_Format;
 	texture->m_Memory    = memory;
-
+	texture->m_SubresourceDictionary = new TextureSubresourceDictionary;
 	return texture;
 }
 void DestroyTextureSubresource(Device device, STextureSubresource* sub)
@@ -1332,12 +1338,12 @@ void DestroyTexture(Device device, Texture& texture)
 	{
 		vkFreeMemory(device->m_Device, texture->m_Memory, VK_NULL_HANDLE);
 		
-		for (auto& it : texture->m_SubresourceDictionary)
+		for (auto& it : *texture->m_SubresourceDictionary)
 		{
 			DestroyTextureSubresource(device, it.second);
 		}
 		vkDestroyImage(device->m_Device, texture->m_Image, VK_NULL_HANDLE);
-
+		delete texture->m_SubresourceDictionary;
 		delete texture;
 		texture = VK_NULL_HANDLE;
 	}
@@ -1565,36 +1571,63 @@ void DestroySamplerTable(Device device, SamplerTable& table)
 	}
 }
 
+union SRenderPassDescKey
+{
+	SRenderPassDesc desc;
+	uint64 combo;
+};
+
 RenderPass CreateRenderPass(Device device, ImageFormat color_format, ImageFormat depth_format, RenderPassFlags flags, uint msaa_samples)
 {
-	VkAttachmentDescription attachments[3] = {};
+	SRenderPassDesc desc; memset(&desc, 0, sizeof(SRenderPassDesc));
+	desc.m_ColorFormats[0] = color_format;
+	desc.m_DepthFormat = depth_format;
+	desc.m_Flags = flags;
+	desc.msaa_samples = 1;
+	return AcquireRenderPass(device, desc);
+}
+
+RenderPass AcquireRenderPass(Device device, const SRenderPassDesc& desc)
+{
+	SRenderPassDescKey key;
+	key.desc = desc;
+	auto it = device->m_RenderpassDictionary->find(key.combo);
+	if (it != device->m_RenderpassDictionary->end())
+	{
+		return it->second;
+	}
+	VkAttachmentDescription attachments[7] = {};
 	uint attachment_count = 0;
 
-	VkAttachmentReference color_reference, depth_reference, resolve_reference;
-
-	if (color_format)
+	VkAttachmentReference color_references[5];
+	VkAttachmentReference depth_reference, resolve_reference;
+	uint colorRTCount = 0;
+	for (auto color_format : desc.m_ColorFormats)
 	{
-		color_reference = { attachment_count, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL };
+		if (color_format)
+		{
+			color_references[colorRTCount] = { attachment_count, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL };
 
-		VkAttachmentDescription& attachment = attachments[attachment_count++];
-		attachment.format = g_Formats[color_format];
-		attachment.samples = VkSampleCountFlagBits(msaa_samples);
-		attachment.loadOp = (flags & CLEAR_COLOR)? VK_ATTACHMENT_LOAD_OP_CLEAR : VK_ATTACHMENT_LOAD_OP_LOAD;
-		attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-		attachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-		attachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-		attachment.initialLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-		attachment.finalLayout = ((flags & FINAL_PRESENT) && msaa_samples == 1)? VK_IMAGE_LAYOUT_PRESENT_SRC_KHR : VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+			VkAttachmentDescription& attachment = attachments[attachment_count++];
+			attachment.format = g_Formats[color_format];
+			attachment.samples = VkSampleCountFlagBits(desc.msaa_samples);
+			attachment.loadOp = (desc.m_Flags & CLEAR_COLOR) ? VK_ATTACHMENT_LOAD_OP_CLEAR : VK_ATTACHMENT_LOAD_OP_LOAD;
+			attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+			attachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+			attachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+			attachment.initialLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+			attachment.finalLayout = ((desc.m_Flags & FINAL_PRESENT) && desc.msaa_samples == 1) ? VK_IMAGE_LAYOUT_PRESENT_SRC_KHR : VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+			colorRTCount++;
+		}
 	}
-
-	if (depth_format)
+	if (desc.m_DepthFormat)
 	{
 		depth_reference = { attachment_count, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL };
 
 		VkAttachmentDescription& attachment = attachments[attachment_count++];
-		attachment.format = g_Formats[depth_format];
-		attachment.samples = VkSampleCountFlagBits(msaa_samples);
-		attachment.loadOp = (flags & CLEAR_DEPTH)? VK_ATTACHMENT_LOAD_OP_CLEAR : VK_ATTACHMENT_LOAD_OP_LOAD;
+		attachment.format = g_Formats[desc.m_DepthFormat];
+		attachment.samples = VkSampleCountFlagBits(desc.msaa_samples);
+		attachment.loadOp = (desc.m_Flags & CLEAR_DEPTH)? VK_ATTACHMENT_LOAD_OP_CLEAR : VK_ATTACHMENT_LOAD_OP_LOAD;
 		attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
 		attachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
 		attachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
@@ -1602,27 +1635,27 @@ RenderPass CreateRenderPass(Device device, ImageFormat color_format, ImageFormat
 		attachment.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
 	}
 
-	if (msaa_samples > 1)
+	if (desc.msaa_samples > 1)
 	{
 		resolve_reference = { attachment_count, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL };
 
 		VkAttachmentDescription& attachment = attachments[attachment_count++];
-		attachment.format = g_Formats[color_format];
+		attachment.format = g_Formats[desc.m_ColorFormats[0]];
 		attachment.samples = VK_SAMPLE_COUNT_1_BIT;
 		attachment.loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
 		attachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
 		attachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
 		attachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
 		attachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-		attachment.finalLayout = (flags & FINAL_PRESENT)? VK_IMAGE_LAYOUT_PRESENT_SRC_KHR : VK_IMAGE_LAYOUT_GENERAL;
+		attachment.finalLayout = (desc.m_Flags & FINAL_PRESENT)? VK_IMAGE_LAYOUT_PRESENT_SRC_KHR : VK_IMAGE_LAYOUT_GENERAL;
 	}
 
 	VkSubpassDescription subpass_desc = {};
 	subpass_desc.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
-	subpass_desc.colorAttachmentCount = color_format?1:0;
-	subpass_desc.pColorAttachments = color_format? &color_reference : VK_NULL_HANDLE;
-	subpass_desc.pDepthStencilAttachment = depth_format? &depth_reference : VK_NULL_HANDLE;
-	subpass_desc.pResolveAttachments = (msaa_samples > 1)? &resolve_reference : VK_NULL_HANDLE;
+	subpass_desc.colorAttachmentCount = colorRTCount;
+	subpass_desc.pColorAttachments = colorRTCount ? &color_references[0] : VK_NULL_HANDLE;
+	subpass_desc.pDepthStencilAttachment = desc.m_DepthFormat ? &depth_reference : VK_NULL_HANDLE;
+	subpass_desc.pResolveAttachments = (desc.msaa_samples > 1)? &resolve_reference : VK_NULL_HANDLE;
 
 	VkSubpassDependency dependencies[2];
 
@@ -1659,9 +1692,9 @@ RenderPass CreateRenderPass(Device device, ImageFormat color_format, ImageFormat
 
 	RenderPass render_pass = new SRenderPass();
 	render_pass->m_RenderPass = vk_render_pass;
-	render_pass->m_Flags = flags;
-	render_pass->m_MSAASamples = msaa_samples;
-
+	render_pass->m_Flags = desc.m_Flags;
+	render_pass->m_MSAASamples = desc.msaa_samples;
+	device->m_RenderpassDictionary->insert(RenderPassDictionary::value_type(key.combo, render_pass));
 	return render_pass;
 }
 
