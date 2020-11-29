@@ -1324,16 +1324,6 @@ void DestroyTextureSubresource(Device device, STextureSubresource* sub)
 	{
 		if(sub->m_ImageView)
 			vkDestroyImageView(device->m_Device, sub->m_ImageView, VK_NULL_HANDLE);			
-		if (sub->m_Faces)
-		{
-			for (int i = 0; i < 6; i++)
-			{
-				if (sub->m_Faces[i])
-				{
-					DestroyTextureSubresource(device, sub->m_Faces[i]);
-				}
-			}
-		}
 	}
 }
 void DestroyTexture(Device device, Texture& texture)
