@@ -251,6 +251,7 @@ STextureSubresource* AcquireSubresource(STexture* texture, const STextureSubreso
 		uint size = texture->m_Slices * (texture->m_MipLevels + 1) + 1;
 		texture->m_Subresources = new STextureSubresource * [size];
 		memset(texture->m_Subresources, 0, sizeof(STextureSubresource*) * size);
+		texture->m_SubresourceDictionary = new TextureSubresourceDictionary;
 	}
 
 	assert(desc.slice >= 0 || desc.mip == -1);
@@ -436,7 +437,6 @@ static bool CreateBackBufferSetups(Device device, uint width, uint height, Image
 				texture->m_MipLevels = 1;
 				texture->m_Type      = TEX_2D;
 				texture->m_Format    = format;
-				texture->m_SubresourceDictionary = new TextureSubresourceDictionary;
 
 				device->m_BackBuffer[i] = texture;
 
@@ -1321,7 +1321,7 @@ Texture CreateTexture(Device device, const STextureParams& params)
 	texture->m_Type      = params.m_Type;
 	texture->m_Format    = params.m_Format;
 	texture->m_Memory    = memory;
-	texture->m_SubresourceDictionary = new TextureSubresourceDictionary;
+
 	return texture;
 }
 void DestroyTextureSubresource(Device device, STextureSubresource* sub)
@@ -1337,10 +1337,12 @@ void DestroyTexture(Device device, Texture& texture)
 	if (texture)
 	{
 		vkFreeMemory(device->m_Device, texture->m_Memory, VK_NULL_HANDLE);
-		
-		for (auto& it : *texture->m_SubresourceDictionary)
+		if (texture->m_SubresourceDictionary)
 		{
-			DestroyTextureSubresource(device, it.second);
+			for (auto& it : *texture->m_SubresourceDictionary)
+			{
+				DestroyTextureSubresource(device, it.second);
+			}
 		}
 		vkDestroyImage(device->m_Device, texture->m_Image, VK_NULL_HANDLE);
 		delete texture->m_SubresourceDictionary;
