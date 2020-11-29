@@ -210,7 +210,7 @@ enum TexViewType
 struct STextureSubresource
 {
 	STexture* m_Owner;
-	STextureSubresource* m_Faces;//for cubemaps only 
+	STextureSubresource** m_Faces;//for cubemaps only 
 	VkImageSubresourceRange m_Range;
 	VkImageView m_ImageView;
 	EResourceState m_State;	
@@ -1318,14 +1318,34 @@ Texture CreateTexture(Device device, const STextureParams& params)
 
 	return texture;
 }
-
+void DestroyTextureSubresource(Device device, STextureSubresource* sub)
+{
+	if (sub->m_ImageView)
+	{
+		if(sub->m_ImageView)
+			vkDestroyImageView(device->m_Device, sub->m_ImageView, VK_NULL_HANDLE);			
+		if (sub->m_Faces)
+		{
+			for (int i = 0; i < 6; i++)
+			{
+				if (sub->m_Faces[i])
+				{
+					DestroyTextureSubresource(device, sub->m_Faces[i]);
+				}
+			}
+		}
+	}
+}
 void DestroyTexture(Device device, Texture& texture)
 {
 	if (texture)
 	{
 		vkFreeMemory(device->m_Device, texture->m_Memory, VK_NULL_HANDLE);
-
-		//vkDestroyImageView(device->m_Device, texture->m_ImageView, VK_NULL_HANDLE);
+		
+		for (auto& it : texture->m_SubresourceDictionary)
+		{
+			DestroyTextureSubresource(device, it.second);
+		}
 		vkDestroyImage(device->m_Device, texture->m_Image, VK_NULL_HANDLE);
 
 		delete texture;
