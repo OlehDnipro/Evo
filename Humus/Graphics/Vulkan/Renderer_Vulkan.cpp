@@ -22,7 +22,8 @@
 #include "../Renderer.h"
 #include "VulkanRootSignature.h"
 #include "../../Util/Array.h"
-
+#include <map>
+#include <vector>
 #define VK_USE_PLATFORM_WIN32_KHR
 #include <vulkan/vulkan.h>
 #pragma comment (lib, "vulkan-1.lib")
@@ -215,12 +216,22 @@ struct STextureSubresource
 	EResourceState m_State;	
 };
 
+struct SRange
+{
+	ushort baseMipLevel, levelCount; 
+	ushort baseArrayLayer, layerCount;
+};
+union SRangeKey
+{
+	SRange range;
+	uint64 combo;
+};
 
 struct STexture
 {
 	VkImage m_Image;
 	STextureSubresource** m_Subresources;
-
+	std::map<uint64, STextureSubresource*> m_SubresourceDictionary;// to prevent range duplicates
 	uint m_Width;
 	uint m_Height;
 	uint m_Depth;
@@ -245,15 +256,30 @@ STextureSubresource* AcquireSubresource(STexture* texture, const STextureSubreso
 	STextureSubresource** ptr =	&texture->m_Subresources[index];
 	if (!(*ptr))
 	{
-		*ptr = new STextureSubresource;
-		(*ptr)->m_Owner = texture;
-		(*ptr)->m_Range.baseMipLevel = desc.mip >= 0 ? desc.mip : 0;
-		(*ptr)->m_Range.levelCount = desc.mip >= 0 ? 1 : texture->m_MipLevels;
-		(*ptr)->m_Range.baseArrayLayer = desc.slice >= 0 ? desc.slice : 0;
-		(*ptr)->m_Range.layerCount = desc.slice >= 0 ? 1 : texture->m_Slices;
-		(*ptr)->m_Range.aspectMask = IsDepthFormat(texture->m_Format) ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT;
-		(*ptr)->m_ImageView = VK_NULL_HANDLE;
-		(*ptr)->m_Faces = nullptr;
+		SRangeKey key;
+
+		key.range.baseMipLevel = desc.mip >= 0 ? desc.mip : 0;
+		key.range.levelCount = desc.mip >= 0 ? 1 : texture->m_MipLevels;
+		key.range.baseArrayLayer = desc.slice >= 0 ? desc.slice : 0;
+		key.range.layerCount = desc.slice >= 0 ? 1 : texture->m_Slices;
+		auto it = texture->m_SubresourceDictionary.find(key.combo);
+		if (it == texture->m_SubresourceDictionary.end())
+		{
+			*ptr = new STextureSubresource;
+			(*ptr)->m_Owner = texture;
+			(*ptr)->m_Range.baseMipLevel = key.range.baseMipLevel;
+			(*ptr)->m_Range.levelCount = key.range.levelCount;
+			(*ptr)->m_Range.baseArrayLayer = key.range.baseArrayLayer;
+			(*ptr)->m_Range.layerCount = key.range.layerCount;
+			(*ptr)->m_Range.aspectMask = IsDepthFormat(texture->m_Format) ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT;
+			(*ptr)->m_ImageView = VK_NULL_HANDLE;
+			(*ptr)->m_Faces = nullptr;
+
+			texture->m_SubresourceDictionary.insert(std::map<uint64, STextureSubresource*>::value_type(key.combo, *ptr));
+		}
+		else
+			*ptr = it->second;
+
 	}
 
 	return *ptr;
@@ -399,7 +425,6 @@ static bool CreateBackBufferSetups(Device device, uint width, uint height, Image
 				//back_buffer->SetName(L"BackBuffer");
 
 				Texture texture = new STexture();
-				memset(texture, 0, sizeof(STexture));
 				texture->m_Image     = back_buffers[i];
 				texture->m_Width     = width;
 				texture->m_Height    = height;
@@ -408,6 +433,8 @@ static bool CreateBackBufferSetups(Device device, uint width, uint height, Image
 				texture->m_MipLevels = 1;
 				texture->m_Type      = TEX_2D;
 				texture->m_Format    = format;
+				texture->m_Subresources = nullptr;
+				texture->m_Memory = VK_NULL_HANDLE;
 
 				device->m_BackBuffer[i] = texture;
 

@@ -321,10 +321,9 @@ enum ResourceType
 struct STextureSubresourceDesc
 {
 	int slice = -1;
-	//int face = -1;
-	//todo:add cubemapsupport
 	int mip = -1;
-	uint flags = 0;
+	int face = -1;
+	//-1 means all
 };
 
 struct SBufferRangeDesc
@@ -337,7 +336,7 @@ struct SResourceDesc
 {
 	SResourceDesc() = default;
 
-	SResourceDesc(const Texture texture, const STextureSubresourceDesc desc = {-1, -1, 0}) : m_Resource(texture), m_texRange(desc),m_Type(RESTYPE_TEXTURE)
+	SResourceDesc(const Texture texture, const STextureSubresourceDesc desc = {-1, -1, -1}) : m_Resource(texture), m_texRange(desc),m_Type(RESTYPE_TEXTURE)
 	{
 	}
 	SResourceDesc(const Buffer buffer, const SBufferRangeDesc desc = {}) : m_Resource(buffer), m_bufRange(desc), m_Type(RESTYPE_BUFFER)
