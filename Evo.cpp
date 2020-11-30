@@ -104,9 +104,6 @@ class EvoApp : public DemoApp
 	Texture m_ColorBuffer, m_ShadowMap;
 	Texture m_DepthBuffer;
 
-	RenderPass m_RenderPassMain, m_RenderPassShadow;
-	RenderSetup m_RenderSetup[BUFFER_FRAMES];
-	RenderSetup m_ShadowSetup[SHADOW_MAP_CASCADE_COUNT];
 	ShadowMapCascade m_Shadows;
 	CTreeFieldCollection m_TreeField;
 public:
@@ -125,37 +122,13 @@ public:
 	}
 	void CreateRenderSetups()
 	{
-		m_RenderPassMain = CreateRenderPass(m_Device, GetBackBufferFormat(m_Device), IMGFMT_D16, CLEAR_COLOR | CLEAR_DEPTH, m_DeviceParams.m_MSAA);
-
-		const bool use_msaa = (m_DeviceParams.m_MSAA > 1);
-		if (use_msaa)
-		{
-			float4 clear_color(0, 0, 0, 0);
-
-			STextureParams cb_params;
-			cb_params.m_Width = m_DeviceParams.m_Width;
-			cb_params.m_Height = m_DeviceParams.m_Height;
-			cb_params.m_Format = GetBackBufferFormat(m_Device);
-			cb_params.m_MSAASampleCount = m_DeviceParams.m_MSAA;
-			cb_params.m_RenderTarget = true;
-			cb_params.m_ClearValue = clear_color;
-			m_ColorBuffer = CreateTexture(m_Device, cb_params);
-		}
-
 		STextureParams db_params;
 		db_params.m_Width = m_DeviceParams.m_Width;
 		db_params.m_Height = m_DeviceParams.m_Height;
 		db_params.m_Format = IMGFMT_D16;
-		db_params.m_MSAASampleCount = m_DeviceParams.m_MSAA;
+		db_params.m_MSAASampleCount = 1;
 		db_params.m_DepthTarget = true;
 		m_DepthBuffer = CreateTexture(m_Device, db_params);
-
-		// A rendersetup for each buffered frame
-		for (uint i = 0; i < BUFFER_FRAMES; i++)
-		{
-			Texture back_buffer = GetBackBuffer(m_Device, i);
-			m_RenderSetup[i] = CreateRenderSetup(m_Device, m_RenderPassMain, use_msaa ? &m_ColorBuffer : &back_buffer, 1, m_DepthBuffer, use_msaa ? back_buffer : nullptr);
-		}
 
 
 		STextureParams tb_params;
@@ -170,26 +143,14 @@ public:
 		tb_params.m_Slices = SHADOW_MAP_CASCADE_COUNT;
 		m_ShadowMap = CreateTexture(m_Device, tb_params);
 
-		m_RenderPassShadow = CreateRenderPass(m_Device, IMGFMT_INVALID, IMGFMT_D16, CLEAR_DEPTH, 1);
-		for (int i = 0; i < SHADOW_MAP_CASCADE_COUNT; i++)
-		{
-			m_ShadowSetup[i] = CreateRenderSetup(m_Device, m_RenderPassShadow, nullptr, 0, m_ShadowMap, nullptr, i);
-		}
 	}
 	~EvoApp()	
 	{
 		DestroyTexture(m_Device, m_DepthBuffer);
 		DestroyTexture(m_Device, m_ShadowMap);
 
-		DestroyRenderSetups();
 	}
-	void DestroyRenderSetups()
-	{
-		for (int i = 0; i < BUFFER_FRAMES; i++)
-			DestroyRenderSetup(m_Device, m_RenderSetup[i]);
-		for (int i = 0; i < SHADOW_MAP_CASCADE_COUNT; i++) 
-			DestroyRenderSetup(m_Device, m_ShadowSetup[i]);
-	}
+
 	void UpdateCamera()
 	{
 		float delta =  m_Timer.GetFrameTime()* m_CamSpeed;
@@ -234,23 +195,31 @@ public:
 
 	void DrawFrame(Context context, uint buffer_index)
 	{
+		float c[4] = { 0,0,0,0 };
+		float d[2] = { 1,0 };
+		SetClearColors(context, c, d);
         static bool init = false;
         Barrier(context, { { m_ShadowMap,  EResourceState::RS_RENDER_TARGET} });
 		for (int i = 0; i < SHADOW_MAP_CASCADE_COUNT; i++)
 		{
-			BeginRenderPass(context, "Shadow", m_RenderPassShadow, m_ShadowSetup[i], float4(0, 0, 0, 0));
-			m_Shadows.SetPassParameters(m_RenderPassShadow, ShadowMapCascade::ShadowPass, i);
+			SetDepthTarget(context, { m_ShadowMap, {i, -1, -1} });
+			SetPassParams(context, CLEAR_DEPTH);
+			RenderPass pass = BeginRenderPass(context, "Shadow");
+			m_Shadows.SetPassParameters(pass, ShadowMapCascade::ShadowPass, i);
 			m_Shadows.Draw(context);
-			EndRenderPass(context, m_ShadowSetup[i]);
+			EndRenderPass(context);
 		}
         Barrier(context, { { m_ShadowMap,  EResourceState::RS_SHADER_READ} });
 
         Texture bb = GetBackBuffer(GetDevice(), buffer_index);
+		SetRenderTarget(context, bb, 0);
+		SetDepthTarget(context, m_DepthBuffer);
+		SetPassParams(context, CLEAR_COLOR | CLEAR_DEPTH);
         Barrier(context, { {bb , EResourceState::RS_RENDER_TARGET} });
-		BeginRenderPass(context, "Backbuffer", m_RenderPassMain, m_RenderSetup[buffer_index], float4(0, 0, 0, 0));
-		m_Shadows.SetPassParameters(m_RenderPassMain, ShadowMapCascade::MainPass);
+		RenderPass pass = BeginRenderPass(context, "Backbuffer");
+		m_Shadows.SetPassParameters(pass, ShadowMapCascade::MainPass);
 		m_Shadows.Draw(context);
-		EndRenderPass(context, m_RenderSetup[buffer_index]);
+		EndRenderPass(context);
         Barrier(context, { { bb , EResourceState::RS_PRESENT} });
 	};
 };

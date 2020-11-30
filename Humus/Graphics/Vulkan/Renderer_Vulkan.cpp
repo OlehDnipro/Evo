@@ -66,6 +66,7 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL VulkanCallback(VkDebugUtilsMessageSeverity
 	return VK_FALSE;
 }
 typedef  std::map<uint64, RenderPass> RenderPassDictionary;
+typedef std::vector<RenderSetup>	RenderSetupVector;
 struct SDevice
 {
 	VkDevice m_Device;
@@ -75,7 +76,8 @@ struct SDevice
 	HWND m_Window;
 
 	Context m_MainContext;
-
+	SFrameBuffer m_CurrentFrameBufferDesc;
+	RenderSetup m_CurrentRenderSetup[BUFFER_FRAMES];
 	RenderPassDictionary* m_RenderpassDictionary;
 
 	RenderPass m_BackBufferRenderPass;
@@ -93,9 +95,10 @@ struct SDevice
 	VkDescriptorPool m_DescriptorPool;
     VkDescriptorPool m_GrowDescriptorPools[BUFFER_FRAMES];
 	SlicedBuffer m_Constants[BUFFER_FRAMES];
-
+	RenderSetupVector* m_RenderSetups[BUFFER_FRAMES];
 	SCommandListAllocator m_CommandListAllocators[BUFFER_FRAMES];
-
+	float m_ClearColor[4];
+	float m_ClearDepth[2];
 
 	// Default states
 	BlendState m_DefaultBlendState;
@@ -288,7 +291,7 @@ STextureSubresource* AcquireSubresource(STexture* texture, const STextureSubreso
 	return *ptr;
 }
 
-VkImageView AcquireSubresourceView(Device device, STextureSubresource* sub, TexViewType type, uint flags)
+VkImageView AcquireSubresourceView(Device device, STextureSubresource* sub, TexViewType type, uint flags = 0)
 {
 	if (sub->m_ImageView)
 		return sub->m_ImageView;
@@ -881,7 +884,9 @@ Device CreateDevice(DeviceParams& params)
 	device->m_Surface = surface;
 	device->m_Instance = instance;
 	device->m_RenderpassDictionary = new RenderPassDictionary;
-
+	memset(&device->m_CurrentRenderSetup[0], 0, sizeof(RenderSetup)*BUFFER_FRAMES);
+	for (int i = 0; i < BUFFER_FRAMES; i++)
+		device->m_RenderSetups[i] = new RenderSetupVector;
 	// Create swapchain
 	VkSwapchainCreateInfoKHR& swapchain_create_info = device->m_SwapchainCreateInfo;
 	swapchain_create_info.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
@@ -1060,6 +1065,10 @@ void DestroyDevice(Device& device)
 	{
 		DestroyRenderPass(device, pass.second);
 	}
+
+	for (int i = 0; i < BUFFER_FRAMES; i++)
+		delete device->m_RenderSetups[i];
+	
 	vkDestroyDevice(device->m_Device, VK_NULL_HANDLE);
 	vkDestroyInstance(device->m_Instance, VK_NULL_HANDLE);
 
@@ -1384,7 +1393,7 @@ void UpdateResourceTable(Device device, RootSignature root, uint32 slot, Resourc
 			descriptor_write.descriptorType = (item.m_Type == TEXTURE) ? VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE : VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
 			descriptor_write.pImageInfo = &image_info;
 			descriptor_write.pBufferInfo = VK_NULL_HANDLE;
-			image_info.imageView = AcquireSubresourceView(device, subRes, item.m_Type == RESTYPE_TEXTURE ? TexViewType::SRV : TexViewType::UAV, 0);
+			image_info.imageView = AcquireSubresourceView(device, subRes, item.m_Type == RESTYPE_TEXTURE ? TexViewType::SRV : TexViewType::UAV);
 			image_info.imageLayout = (item.m_Type == TEXTURE) ? (IsDepthFormat(texture->m_Format)? VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL:VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL )
                                                                  : VK_IMAGE_LAYOUT_GENERAL;
 			break;
@@ -1712,77 +1721,53 @@ void DestroyRenderPass(Device device, RenderPass& render_pass)
 }
 
 
-RenderSetup CreateRenderSetup(Device device, RenderPass render_pass, Texture* color_targets, uint color_target_count, Texture depth_target, Texture resolve_target, uint depth_slice)
+RenderSetup CreateRenderSetup(Device device, RenderPass render_pass, Texture* color_targets, uint color_target_count, Texture depth_target, Texture resolve_target, int depth_slice)
 {
-	VkImageView attachments[3];
+	SFrameBuffer fb; memset(&fb, 0, sizeof(SFrameBuffer));
+	for (int i = 0; i < color_target_count; i++)
+	{
+		fb.m_ColorTargets[i] = color_targets[i];
+	}
+	fb.m_DepthTarget = { depth_target, {depth_slice, -1, -1} };
+	fb.m_ResolveTarget = resolve_target;
+	return CreateRenderSetup(device, render_pass, fb);
+}
+RenderSetup CreateRenderSetup(Device device, RenderPass render_pass, SFrameBuffer& fb)
+{
+	VkImageView attachments[7];
 	uint attachment_count = 0;
 
-	if (color_target_count)
+	for (SResourceDesc& color_target : fb.m_ColorTargets)
 	{
-		VkImageViewCreateInfo view_create_info = {};
-		view_create_info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-		view_create_info.image = color_targets[0]->m_Image;
-		view_create_info.viewType = g_TextureTypes[color_targets[0]->m_Type];
-		view_create_info.format = g_Formats[color_targets[0]->m_Format];
-		view_create_info.components = { VK_COMPONENT_SWIZZLE_R, VK_COMPONENT_SWIZZLE_G, VK_COMPONENT_SWIZZLE_B, VK_COMPONENT_SWIZZLE_A };
-		view_create_info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-		view_create_info.subresourceRange.baseMipLevel = 0;
-		view_create_info.subresourceRange.levelCount = 1;
-		view_create_info.subresourceRange.baseArrayLayer = 0;
-		view_create_info.subresourceRange.layerCount = 1;
+		if (color_target.m_Resource)
+		{
+			STextureSubresource* sub = AcquireSubresource((Texture)color_target.m_Resource, color_target.m_texRange);
+			VkImageView color_view = AcquireSubresourceView(device, sub, TexViewType::RTV);
+			ASSERT(color_view != VK_NULL_HANDLE);
 
-		VkImageView color_view = VK_NULL_HANDLE;
-		VkResult res = vkCreateImageView(device->m_Device, &view_create_info, VK_NULL_HANDLE, &color_view);
-		ASSERT(res == VK_SUCCESS);
-
-		attachments[attachment_count++] = color_view;
+			attachments[attachment_count++] = color_view;
+		}
 	}
-
-	if (depth_target)
+	if (fb.m_DepthTarget.m_Resource)
 	{
-		VkImageViewCreateInfo view_create_info = {};
-		view_create_info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-		view_create_info.image = depth_target->m_Image;
-		view_create_info.viewType = g_TextureTypes[depth_target->m_Type];
-		view_create_info.format = g_Formats[depth_target->m_Format];
-		view_create_info.components = { VK_COMPONENT_SWIZZLE_R, VK_COMPONENT_SWIZZLE_G, VK_COMPONENT_SWIZZLE_B, VK_COMPONENT_SWIZZLE_A };
-		view_create_info.subresourceRange = {};
-		view_create_info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;// | VK_IMAGE_ASPECT_STENCIL_BIT;
-		view_create_info.subresourceRange.baseMipLevel = 0;
-		view_create_info.subresourceRange.levelCount = 1;
-		view_create_info.subresourceRange.baseArrayLayer = depth_slice;
-		view_create_info.subresourceRange.layerCount = 1;
-
-		VkImageView depth_view = VK_NULL_HANDLE;
-		VkResult res = vkCreateImageView(device->m_Device, &view_create_info, VK_NULL_HANDLE, &depth_view);
-		ASSERT(res == VK_SUCCESS);
+		STextureSubresource* sub = AcquireSubresource((Texture)fb.m_DepthTarget.m_Resource, fb.m_DepthTarget.m_texRange);
+		VkImageView depth_view = AcquireSubresourceView(device, sub, TexViewType::DSV);
+		ASSERT(depth_view != VK_NULL_HANDLE);
 
 		attachments[attachment_count++] = depth_view;
 	}
 
-	if (resolve_target)
+	if (fb.m_ResolveTarget.m_Resource)
 	{
-		VkImageViewCreateInfo view_create_info = {};
-		view_create_info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-		view_create_info.image = resolve_target->m_Image;
-		view_create_info.viewType = g_TextureTypes[resolve_target->m_Type];
-		view_create_info.format = g_Formats[resolve_target->m_Format];
-		view_create_info.components = { VK_COMPONENT_SWIZZLE_R, VK_COMPONENT_SWIZZLE_G, VK_COMPONENT_SWIZZLE_B, VK_COMPONENT_SWIZZLE_A };
-		view_create_info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-		view_create_info.subresourceRange.baseMipLevel = 0;
-		view_create_info.subresourceRange.levelCount = 1;
-		view_create_info.subresourceRange.baseArrayLayer = 0;
-		view_create_info.subresourceRange.layerCount = 1;
-
-		VkImageView resolve_view = VK_NULL_HANDLE;
-		VkResult res = vkCreateImageView(device->m_Device, &view_create_info, VK_NULL_HANDLE, &resolve_view);
-		ASSERT(res == VK_SUCCESS);
+		STextureSubresource* sub = AcquireSubresource((Texture)fb.m_ResolveTarget.m_Resource, fb.m_ResolveTarget.m_texRange);
+		VkImageView resolve_view = AcquireSubresourceView(device, sub, TexViewType::RTV);
+		ASSERT(resolve_view != VK_NULL_HANDLE);
 
 		attachments[attachment_count++] = resolve_view;
 	}
 
-	uint32 width  = color_targets?color_targets[0]->m_Width:depth_target->m_Width;
-	uint32 height = color_targets?color_targets[0]->m_Height:depth_target->m_Height;
+	uint32 width  = fb.m_ColorTargets[0].m_Resource ? ((Texture)fb.m_ColorTargets[0].m_Resource)->m_Width: ((Texture)fb.m_DepthTarget.m_Resource)->m_Width;
+	uint32 height = fb.m_ColorTargets[0].m_Resource ? ((Texture)fb.m_ColorTargets[0].m_Resource)->m_Height: ((Texture)fb.m_DepthTarget.m_Resource)->m_Height;
 
 
 	VkFramebufferCreateInfo framebuffer_create_info = {};
@@ -1813,8 +1798,6 @@ void DestroyRenderSetup(Device device, RenderSetup& setup)
 {
 	if (setup)
 	{
-		for (VkImageView& view : setup->m_Views)
-			vkDestroyImageView(device->m_Device, view, VK_NULL_HANDLE);
 		vkDestroyFramebuffer(device->m_Device, setup->m_FrameBuffer, VK_NULL_HANDLE);
 
 		delete setup;
@@ -2529,6 +2512,29 @@ void EndMarker(Context context)
 	vkCmdDebugMarkerEnd(context->m_CommandBuffer);
 #endif
 }
+void SetRenderTarget(Context context, SResourceDesc target, uint slot)
+{
+	Device device = context->m_Device;
+	assert(slot < MAX_COLOR_TARGETS);
+	device->m_CurrentFrameBufferDesc.m_ColorTargets[slot] = target;
+}
+void SetDepthTarget(Context context, SResourceDesc depth)
+{
+	Device device = context->m_Device;
+	device->m_CurrentFrameBufferDesc.m_DepthTarget = depth;
+}
+void SetPassParams(Context context, RenderPassFlags flags)
+{
+	Device device = context->m_Device;
+	device->m_CurrentFrameBufferDesc.m_PassFlags = flags;
+}
+
+void SetClearColors(Context context, const float clear_color[4], const float clear_depth[2])
+{
+	Device device = context->m_Device;
+	memcpy(&device->m_ClearColor[0], &clear_color[0], 4*sizeof(float));
+	memcpy(&device->m_ClearDepth[0], &clear_depth[0], 2*sizeof(float));
+}
 
 void BeginContext(Context context, uint upload_buffer_size, const char* name, bool profile)
 {
@@ -2546,7 +2552,11 @@ void BeginContext(Context context, uint upload_buffer_size, const char* name, bo
     context->m_DescriptorPool = device->m_GrowDescriptorPools[device->m_CurrentBuffer];
     ResetDescriptorPool(context);
 	device->m_Constants[device->m_CurrentBuffer].m_Cursor = 0;
-
+	for (auto& fb : *device->m_RenderSetups[device->m_CurrentBuffer])
+		DestroyRenderSetup(device, fb);
+	device->m_RenderSetups[device->m_CurrentBuffer]->clear();
+	device->m_CurrentRenderSetup[device->m_CurrentBuffer] = nullptr;
+	memset(&device->m_CurrentFrameBufferDesc, 0, sizeof(SFrameBuffer));
 	SCommandListAllocator* allocator = &device->m_CommandListAllocators[device->m_CurrentBuffer];
 	context->m_Allocator = allocator;
 	allocator->Begin(device, upload_buffer_size);
@@ -2767,8 +2777,38 @@ void SetTextureData(Context context, Texture texture, uint mip, uint slice, cons
 	barrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 	vkCmdPipelineBarrier(context->m_CommandBuffer, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, VK_NULL_HANDLE, 0, VK_NULL_HANDLE, 1, &barrier);
 }
+RenderPass BeginRenderPass(Context context, const char* name)
+{
+	Device device = context->m_Device;
+	SRenderPassDesc passDesc; memset(&passDesc, 0, sizeof(SRenderPassDesc));
+	passDesc.msaa_samples = 1;
+	int index = 0;
+	for (SResourceDesc& color_target : device->m_CurrentFrameBufferDesc.m_ColorTargets)
+	{
+		if (color_target.m_Resource)
+		{
+			passDesc.m_ColorFormats[index] = ((Texture)color_target.m_Resource)->m_Format;
+		}
+		index++;
+	}
+	SResourceDesc& depth_target = device->m_CurrentFrameBufferDesc.m_DepthTarget;
+	if (depth_target.m_Resource)
+		passDesc.m_DepthFormat = ((Texture)depth_target.m_Resource)->m_Format;
+	passDesc.m_Flags = device->m_CurrentFrameBufferDesc.m_PassFlags;
+	RenderPass pass = AcquireRenderPass(device, passDesc);
+	device->m_CurrentRenderSetup[device->m_CurrentBuffer] = CreateRenderSetup(device, pass, device->m_CurrentFrameBufferDesc);
+	RenderSetupVector& vec = *device->m_RenderSetups[device->m_CurrentBuffer];
+	vec.push_back(device->m_CurrentRenderSetup[device->m_CurrentBuffer]);
+	BeginRenderPass(context, name, pass, device->m_CurrentRenderSetup[device->m_CurrentBuffer], &device->m_ClearColor[0], &device->m_ClearDepth[0]);
+	return pass;
+}
+void EndRenderPass(Context context)
+{
+	Device device = context->m_Device;
+	EndRenderPass(context, device->m_CurrentRenderSetup[device->m_CurrentBuffer]);
+}
 
-void BeginRenderPass(Context context, const char* name, const RenderPass render_pass, const RenderSetup setup, const float* clear_color)
+void BeginRenderPass(Context context, const char* name, const RenderPass render_pass, const RenderSetup setup, const float* clear_color, const float* clear_depth)
 {
 	BeginMarker(context, name);
 

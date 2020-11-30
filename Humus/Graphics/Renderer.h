@@ -343,7 +343,7 @@ struct SResourceDesc
 	{
 	}
 
-	const void* m_Resource;
+	void* m_Resource;
 	ResourceType m_Type;
 
 	STextureSubresourceDesc m_texRange;
@@ -375,20 +375,27 @@ enum RenderPassFlags:uint8
 	CLEAR_DEPTH   = 0x2,
 	FINAL_PRESENT = 0x4,
 };
+#define MAX_COLOR_TARGETS 5
 struct SRenderPassDesc
 {
-	ImageFormat m_ColorFormats[5];
+	ImageFormat m_ColorFormats[MAX_COLOR_TARGETS];
 	ImageFormat m_DepthFormat;
 	RenderPassFlags m_Flags;
 	uint8 msaa_samples;
 };
-
+struct SFrameBuffer
+{
+	SResourceDesc m_ColorTargets[MAX_COLOR_TARGETS];
+	SResourceDesc m_DepthTarget, m_ResolveTarget;
+	RenderPassFlags m_PassFlags;
+};
 inline RenderPassFlags operator | (RenderPassFlags a, RenderPassFlags b) { return RenderPassFlags(int(a) | int(b)); }
 
 RenderPass AcquireRenderPass(Device device, const SRenderPassDesc& desc);
 RenderPass CreateRenderPass(Device device, ImageFormat color_format, ImageFormat depth_format, RenderPassFlags flags, uint msaa_samples = 1);
 
-RenderSetup CreateRenderSetup(Device device, RenderPass render_pass, Texture* color_targets, uint color_target_count, Texture depth_target = nullptr, Texture resolve_target = nullptr, uint depth_slice = 0);
+RenderSetup CreateRenderSetup(Device device, RenderPass render_pass, SFrameBuffer& fb );
+RenderSetup CreateRenderSetup(Device device, RenderPass render_pass, Texture* color_targets, uint color_target_count, Texture depth_target = nullptr, Texture resolve_target = nullptr, int depth_slice = 0);
 void DestroyRenderSetup(Device device, RenderSetup& setup);
 
 struct SCodeBlob
@@ -581,9 +588,14 @@ void UnmapBuffer(const SMapBufferParams& params);
 void SetBufferData(Context context, Buffer buffer, const void* data, uint size);
 void SetTextureData(Context context, Texture texture, uint mip, uint slice, const void* data, uint size, uint pitch);
 
-
+void SetRenderTarget(Context context, SResourceDesc target, uint slot);
+void SetDepthTarget(Context context, SResourceDesc depth);
+void SetPassParams(Context context, RenderPassFlags flags);
+void SetClearColors(Context context, const float clear_color[4], const float clear_depth[2]);
 // Rendering
-void BeginRenderPass(Context context, const char* name, const RenderPass render_pass, const RenderSetup setup, const float* clear_color = nullptr);
+RenderPass BeginRenderPass(Context context, const char* name);
+void EndRenderPass(Context context);
+void BeginRenderPass(Context context, const char* name, const RenderPass render_pass, const RenderSetup setup, const float* clear_color = nullptr, const float* clear_depth = nullptr);
 void EndRenderPass(Context context, const RenderSetup setup);
 
 void TransitionRenderSetup(Context context, const RenderSetup setup, EResourceState state_before, EResourceState state_after);
