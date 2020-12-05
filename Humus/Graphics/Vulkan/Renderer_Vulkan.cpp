@@ -40,8 +40,16 @@ struct SlicedBuffer
 	uint8*  m_Data;
 	uint    m_Cursor;
 };
-struct SCommandListAllocator
+typedef  std::map<uint64, RenderPass> RenderPassDictionary;
+typedef std::vector<RenderSetup>	RenderSetupVector;
+struct SCommandList
 {
+	RenderSetupVector* m_RenderSetups;
+	VkFence m_WaitFence;
+	VkCommandBuffer m_VkCommandBuffer;
+	VkDescriptorPool m_DescriptorPool;
+	SlicedBuffer m_Constants;
+
 	SlicedBuffer m_Staging;
 	VkQueryPool m_QueryPool;
 	Buffer	    m_QueryBuffer;
@@ -53,8 +61,8 @@ struct SCommandListAllocator
 
 	void Begin(Device device, uint size);
 	void End(Device device);
-
 };
+
 uint32 AllocateBufferSlice(Device device, SlicedBuffer& buffer, uint size, uint alignment);
 
 static VkDebugUtilsMessengerEXT debugMessenger = VK_NULL_HANDLE;
@@ -65,8 +73,7 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL VulkanCallback(VkDebugUtilsMessageSeverity
 {
 	return VK_FALSE;
 }
-typedef  std::map<uint64, RenderPass> RenderPassDictionary;
-typedef std::vector<RenderSetup>	RenderSetupVector;
+
 struct SDevice
 {
 	VkDevice m_Device;
@@ -76,27 +83,18 @@ struct SDevice
 	HWND m_Window;
 
 	Context m_MainContext;
-	SFrameBuffer m_CurrentFrameBufferDesc;
-	RenderSetup m_CurrentRenderSetup[BUFFER_FRAMES];
+	SCommandList m_CommandBuffers[BUFFER_FRAMES];
 	RenderPassDictionary* m_RenderpassDictionary;
 
-	RenderPass m_BackBufferRenderPass;
 	Texture m_BackBuffer[BUFFER_FRAMES];
-	RenderSetup m_BackBufferSetup[BUFFER_FRAMES];
 
 	VkSemaphore m_PresentSemaphore;
-	VkFence m_WaitFences[BUFFER_FRAMES];
-	uint32 m_CurrentBuffer;
+	uint32 m_SwapchainImageId;
 	bool m_WasAcquired;
 
 	VkCommandPool m_CommandPool;
-	VkCommandBuffer m_CommandBuffers[BUFFER_FRAMES];
-
 	VkDescriptorPool m_DescriptorPool;
-    VkDescriptorPool m_GrowDescriptorPools[BUFFER_FRAMES];
-	SlicedBuffer m_Constants[BUFFER_FRAMES];
-	RenderSetupVector* m_RenderSetups[BUFFER_FRAMES];
-	SCommandListAllocator m_CommandListAllocators[BUFFER_FRAMES];
+	RenderPass m_BackBufferRenderPass;
 	float m_ClearColor[4];
 	float m_ClearDepth[2];
 
@@ -118,15 +116,18 @@ struct SDevice
 	StaticArray<DisplayMode> m_DisplayModes;
 };
 
+
+
 struct SContext
 {
-	VkCommandBuffer m_CommandBuffer;
-	RootSignature m_CurrRootSignature;
-	SCommandListAllocator* m_Allocator;
-	VkDescriptorPool m_DescriptorPool;
+	SCommandList* m_CmdList;
+	RootSignature m_CurrentRootSignature;
+	SFrameBuffer m_CurrentFrameBufferDesc;
+	RenderSetup m_CurrentRenderSetup;
 	Device m_Device;
 
 	bool m_IsProfiling;
+	VkCommandBuffer GetVkCommandBuffer() { return m_CmdList ? m_CmdList->m_VkCommandBuffer:VK_NULL_HANDLE; }
 };
 
 static const VkImageViewType g_TextureTypes[] =
@@ -442,8 +443,6 @@ static bool CreateBackBufferSetups(Device device, uint width, uint height, Image
 				texture->m_Format    = format;
 
 				device->m_BackBuffer[i] = texture;
-
-				device->m_BackBufferSetup[i] = CreateRenderSetup(device, device->m_BackBufferRenderPass, &texture, 1, VK_NULL_HANDLE);
 			}
 
 			return true;
@@ -458,7 +457,6 @@ static void DestroyBackBufferSetups(Device device)
 {
 	for (uint i = 0; i < BUFFER_FRAMES; i++)
 	{
-		DestroyRenderSetup(device, device->m_BackBufferSetup[i]);
 		device->m_BackBuffer[i]->m_Image = VK_NULL_HANDLE; // These are owned by the swapchain, so don't explicitly destroy them
 		DestroyTexture(device, device->m_BackBuffer[i]);
 	}
@@ -884,9 +882,7 @@ Device CreateDevice(DeviceParams& params)
 	device->m_Surface = surface;
 	device->m_Instance = instance;
 	device->m_RenderpassDictionary = new RenderPassDictionary;
-	memset(&device->m_CurrentRenderSetup[0], 0, sizeof(RenderSetup)*BUFFER_FRAMES);
-	for (int i = 0; i < BUFFER_FRAMES; i++)
-		device->m_RenderSetups[i] = new RenderSetupVector;
+
 	// Create swapchain
 	VkSwapchainCreateInfoKHR& swapchain_create_info = device->m_SwapchainCreateInfo;
 	swapchain_create_info.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
@@ -918,17 +914,6 @@ Device CreateDevice(DeviceParams& params)
 	res = vkCreateSemaphore(vk_device, &semaphore_create_info, VK_NULL_HANDLE, &device->m_PresentSemaphore);
 	ASSERT(res == VK_SUCCESS);
 
-	// Fences
-	VkFenceCreateInfo fence_create_info = {};
-	fence_create_info.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
-	fence_create_info.flags = VK_FENCE_CREATE_SIGNALED_BIT;
-
-	for (VkFence& fence : device->m_WaitFences)
-	{
-		res = vkCreateFence(vk_device, &fence_create_info, VK_NULL_HANDLE, &fence);
-		ASSERT(res == VK_SUCCESS);
-	}
-
 
 	VkCommandPoolCreateInfo cmd_pool_create_info = {};
 	cmd_pool_create_info.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
@@ -938,15 +923,8 @@ Device CreateDevice(DeviceParams& params)
 	res = vkCreateCommandPool(vk_device, &cmd_pool_create_info, VK_NULL_HANDLE, &device->m_CommandPool);
 	ASSERT(res == VK_SUCCESS);
 
-	VkCommandBufferAllocateInfo cmd_buffer_alloc_info = {};
-	cmd_buffer_alloc_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-	cmd_buffer_alloc_info.commandPool = device->m_CommandPool;
-	cmd_buffer_alloc_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-	cmd_buffer_alloc_info.commandBufferCount = BUFFER_FRAMES;
-	res = vkAllocateCommandBuffers(vk_device, &cmd_buffer_alloc_info, device->m_CommandBuffers);
-	ASSERT(res == VK_SUCCESS);
-
-
+	
+	
 	// Enumerate display modes
 	int m = 0;
 	DEVMODEW dm;
@@ -975,16 +953,14 @@ Device CreateDevice(DeviceParams& params)
 	}
 	device->m_DisplayModes.SetCapacity(modes.GetCount());
 	memcpy(device->m_DisplayModes.GetArray(), modes.GetArray(), modes.GetCount() * sizeof(DisplayMode));
-
-
-
+	
+	//permanent descriptor pool
 	VkDescriptorPoolSize pool_sizes[] =
 	{
 		{ VK_DESCRIPTOR_TYPE_SAMPLER, 16 },
 		{ VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 256 },
 		{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, 64 },
 	};
-
 	VkDescriptorPoolCreateInfo desc_pool_create_info = {};
 	desc_pool_create_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
 	desc_pool_create_info.poolSizeCount = elementsof(pool_sizes);
@@ -992,36 +968,23 @@ Device CreateDevice(DeviceParams& params)
 	desc_pool_create_info.maxSets = 64;
 	desc_pool_create_info.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
 	res = vkCreateDescriptorPool(vk_device, &desc_pool_create_info, VK_NULL_HANDLE, &device->m_DescriptorPool);
-	ASSERT(res == VK_SUCCESS);
 
-	for (uint i = 0; i < BUFFER_FRAMES; i++)
+	ASSERT(res == VK_SUCCESS);
+	for (SCommandList& cmdList : device->m_CommandBuffers)
 	{
-        desc_pool_create_info.maxSets = 4096;
-        desc_pool_create_info.flags = 0;
-        res = vkCreateDescriptorPool(vk_device, &desc_pool_create_info, VK_NULL_HANDLE, &device->m_GrowDescriptorPools[i]);
-        ASSERT(res == VK_SUCCESS);
-		device->m_CommandListAllocators[i].Init(device);
+		cmdList.Init(device);
 	}
 
-	device->m_MainContext = CreateContext(device, false);
-
-	ImageFormat format = (image_format.format == VK_FORMAT_B8G8R8A8_UNORM)? IMGFMT_BGRA8 : IMGFMT_RGBA8;
+	ImageFormat format = (image_format.format == VK_FORMAT_B8G8R8A8_UNORM) ? IMGFMT_BGRA8 : IMGFMT_RGBA8;
 	device->m_BackBufferRenderPass = CreateRenderPass(device, format, IMGFMT_INVALID, FINAL_PRESENT);
-
+	
 	if (!CreateBackBufferSetups(device, params.m_Width, params.m_Height, format))
 		return false;
 
+	device->m_MainContext = CreateContext(device, false);
+
 	device->m_DefaultBlendState = CreateBlendState(device, BF_ONE, BF_ZERO, BM_ADD, 0xF, false);
 
-
-	SBufferParams cb(1024*1024, HEAP_UPLOAD, CONSTANT_BUFFER, "ConstantBuffer");
-	for (uint i = 0; i < BUFFER_FRAMES; i++)
-	{
-		device->m_Constants[i].m_Buffer = CreateBuffer(device, cb);
-		device->m_Constants[i].m_Cursor = 0;
-		device->m_Constants[i].m_Data = VK_NULL_HANDLE;
-		vkMapMemory(device->m_Device, device->m_Constants[i].m_Buffer->m_Memory, 0, device->m_Constants[i].m_Buffer->m_Size, 0, (void**)&device->m_Constants[i].m_Data);
-	}
 	return device;
 }
 void DestroyRenderPass(Device device, RenderPass& render_pass);
@@ -1040,22 +1003,15 @@ void DestroyDevice(Device& device)
 	DestroyBlendState(device, device->m_DefaultBlendState);
 
 	vkDestroyDescriptorPool(device->m_Device, device->m_DescriptorPool, VK_NULL_HANDLE);
-    for (uint i = 0; i < BUFFER_FRAMES; i++)
-    {
-        vkDestroyDescriptorPool(device->m_Device, device->m_GrowDescriptorPools[i], VK_NULL_HANDLE);
-		vkDestroyBuffer(device->m_Device, device->m_Constants[i].m_Buffer->m_Buffer, VK_NULL_HANDLE);
-    }
+
 	DestroyBackBufferSetups(device);
 
 	DestroyContext(device, device->m_MainContext);
 
 	vkDestroySemaphore(device->m_Device, device->m_PresentSemaphore, VK_NULL_HANDLE);
-
-	for (VkFence& fence : device->m_WaitFences)
-		vkDestroyFence(device->m_Device, fence, VK_NULL_HANDLE);
-
-	for (SCommandListAllocator& command_allocator : device->m_CommandListAllocators)
-		command_allocator.Destroy(device);
+	
+	for (SCommandList& cmdList : device->m_CommandBuffers)
+		cmdList.Destroy(device);
 
 	vkDestroyCommandPool(device->m_Device, device->m_CommandPool, VK_NULL_HANDLE);
 
@@ -1066,9 +1022,7 @@ void DestroyDevice(Device& device)
 		DestroyRenderPass(device, pass.second);
 	}
 
-	for (int i = 0; i < BUFFER_FRAMES; i++)
-		delete device->m_RenderSetups[i];
-	
+
 	vkDestroyDevice(device->m_Device, VK_NULL_HANDLE);
 	vkDestroyInstance(device->m_Instance, VK_NULL_HANDLE);
 
@@ -1084,7 +1038,7 @@ void Present(Device device, bool vsync)
 	present_info.pNext = VK_NULL_HANDLE;
 	present_info.swapchainCount = 1;
 	present_info.pSwapchains = &device->m_SwapChain;
-	present_info.pImageIndices = &device->m_CurrentBuffer;
+	present_info.pImageIndices = &device->m_SwapchainImageId;
 	VkResult res = vkQueuePresentKHR(device->m_GraphicsQueue, &present_info);
 	ASSERT(res == VK_SUCCESS);
 }
@@ -1109,11 +1063,6 @@ RenderPass GetBackBufferRenderPass(Device device)
 	return device->m_BackBufferRenderPass;
 }
 
-RenderSetup GetBackBufferSetup(Device device, uint buffer)
-{
-	return device->m_BackBufferSetup[buffer];
-}
-
 Context GetMainContext(Device device)
 {
 	return device->m_MainContext;
@@ -1127,11 +1076,11 @@ uint GetBackBufferIndex(Device device)
 
 		// TODO: Evaluate if this really belongs here ...
 
-		VkResult res = vkAcquireNextImageKHR(device->m_Device, device->m_SwapChain, UINT64_MAX, device->m_PresentSemaphore, VK_NULL_HANDLE, &device->m_CurrentBuffer);
+		VkResult res = vkAcquireNextImageKHR(device->m_Device, device->m_SwapChain, UINT64_MAX, device->m_PresentSemaphore, VK_NULL_HANDLE, &device->m_SwapchainImageId);
 		ASSERT(res == VK_SUCCESS);
 	}
 
-	return device->m_CurrentBuffer;
+	return device->m_SwapchainImageId;
 }
 
 uint GetDisplayModeCount(Device device)
@@ -1458,7 +1407,7 @@ ResourceTable CreateResourceTable(Device device, RootSignature root, uint32 slot
 
 	VkDescriptorSetAllocateInfo info = {};
 	info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-	info.descriptorPool = onframe? onframe->m_DescriptorPool:device->m_DescriptorPool;
+	info.descriptorPool = onframe? onframe->m_CmdList->m_DescriptorPool:device->m_DescriptorPool;
 	info.descriptorSetCount = 1;
 	info.pSetLayouts = &root->m_Slots[slot].m_DescriptorSetLayout;
 
@@ -1500,7 +1449,7 @@ SamplerTable CreateSamplerTable(Device device, RootSignature root, uint32 slot, 
 
 	VkDescriptorSetAllocateInfo alloc_info = {};
 	alloc_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-	alloc_info.descriptorPool = onframe? onframe->m_DescriptorPool :device->m_DescriptorPool;
+	alloc_info.descriptorPool = onframe? onframe->m_CmdList->m_DescriptorPool :device->m_DescriptorPool;
 	alloc_info.descriptorSetCount = 1;
 	alloc_info.pSetLayouts = &root->m_Slots[slot].m_DescriptorSetLayout;
 
@@ -1560,10 +1509,7 @@ SamplerTable CreateSamplerTable(Device device, RootSignature root, uint32 slot, 
 
 	return table;
 }
-void ResetDescriptorPool(Context context)
-{
-	vkResetDescriptorPool(GetDevice(context)->m_Device, context->m_DescriptorPool, 0);
-}
+
 
 void DestroySamplerTable(Device device, SamplerTable& table)
 {
@@ -1571,6 +1517,7 @@ void DestroySamplerTable(Device device, SamplerTable& table)
 	{
 		if (table->m_Pool != device->m_DescriptorPool)
 			return;
+
 		for (uint i = 0; i < table->m_Count; i++)
 		{
 			vkDestroySampler(device->m_Device, table->m_Samplers[i], VK_NULL_HANDLE);
@@ -2415,13 +2362,55 @@ uint GetBufferSize(Buffer buffer)
 	return buffer->m_Size;
 }
 #define CONTANT_BUFFER_SIZE  1024*1024
-void SCommandListAllocator::Init(Device device)
+void SCommandList::Init(Device device)
 {
+
+	m_RenderSetups = new RenderSetupVector;
+	// Fences
+	VkFenceCreateInfo fence_create_info = {};
+	fence_create_info.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+	fence_create_info.flags = VK_FENCE_CREATE_SIGNALED_BIT;
+	VkResult res = vkCreateFence(device->m_Device, &fence_create_info, VK_NULL_HANDLE, &m_WaitFence);
+	ASSERT(res == VK_SUCCESS);
+
+	//commandbuffer
+	VkCommandBufferAllocateInfo cmd_buffer_alloc_info = {};
+	cmd_buffer_alloc_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+	cmd_buffer_alloc_info.commandPool = device->m_CommandPool;
+	cmd_buffer_alloc_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+	cmd_buffer_alloc_info.commandBufferCount = 1;
+	res = vkAllocateCommandBuffers(device->m_Device, &cmd_buffer_alloc_info, &m_VkCommandBuffer);
+	ASSERT(res == VK_SUCCESS);
+
+	//descriptor pool
+	VkDescriptorPoolSize pool_sizes[] =
+	{
+		{ VK_DESCRIPTOR_TYPE_SAMPLER, 16 },
+		{ VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 256 },
+		{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, 64 },
+	};
+
+	VkDescriptorPoolCreateInfo desc_pool_create_info = {};
+	desc_pool_create_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+	desc_pool_create_info.poolSizeCount = elementsof(pool_sizes);
+	desc_pool_create_info.pPoolSizes = pool_sizes;
+	desc_pool_create_info.maxSets = 64;
+
+	res = vkCreateDescriptorPool(device->m_Device, &desc_pool_create_info, VK_NULL_HANDLE, &m_DescriptorPool);
+	ASSERT(res == VK_SUCCESS);
+
+	SBufferParams cb(1024 * 1024, HEAP_UPLOAD, CONSTANT_BUFFER, "ConstantBuffer");
+	m_Constants.m_Buffer = CreateBuffer(device, cb);
+	m_Constants.m_Cursor = 0;
+	m_Constants.m_Data = VK_NULL_HANDLE;
+
+	vkMapMemory(device->m_Device, m_Constants.m_Buffer->m_Memory, 0, m_Constants.m_Buffer->m_Size, 0, (void**)&m_Constants.m_Data);
+	
 	VkQueryPoolCreateInfo info = {};
 	info.sType = VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO;
 	info.queryType = VK_QUERY_TYPE_TIMESTAMP;
 	info.queryCount = MAX_QUERY_COUNT;
-	VkResult res = vkCreateQueryPool(device->m_Device, &info, VK_NULL_HANDLE, &m_QueryPool);
+	res = vkCreateQueryPool(device->m_Device, &info, VK_NULL_HANDLE, &m_QueryPool);
 	ASSERT(res == VK_SUCCESS);
 
 	SBufferParams params(MAX_QUERY_COUNT * sizeof(uint64), HEAP_READBACK, NONE, "QueryBuffer");
@@ -2429,15 +2418,33 @@ void SCommandListAllocator::Init(Device device)
 
 }
 
-void SCommandListAllocator::Destroy(Device device)
+void SCommandList::Destroy(Device device)
 {
+	delete m_RenderSetups;
+
+	vkDestroyFence(device->m_Device, m_WaitFence, VK_NULL_HANDLE);
+	vkDestroyDescriptorPool(device->m_Device, m_DescriptorPool, VK_NULL_HANDLE);
+	DestroyBuffer(device, m_Constants.m_Buffer);
+
 	vkDestroyQueryPool(device->m_Device, m_QueryPool, VK_NULL_HANDLE);
 	DestroyBuffer(device, m_QueryBuffer);
 	DestroyBuffer(device, m_Staging.m_Buffer);
 }
 
-void SCommandListAllocator::Begin(Device device, uint size)
+void SCommandList::Begin(Device device, uint size)
 {
+	// Use a fence to wait until the command buffer has finished execution before using it again
+	VkResult res = vkWaitForFences(device->m_Device, 1, &m_WaitFence, VK_TRUE, UINT64_MAX);
+	ASSERT(res == VK_SUCCESS);
+	res = vkResetFences(device->m_Device, 1, &m_WaitFence);
+	ASSERT(res == VK_SUCCESS);
+
+	vkResetDescriptorPool(device->m_Device, m_DescriptorPool, 0);
+	m_Constants.m_Cursor = 0;
+	for (auto& fb : *m_RenderSetups)
+		DestroyRenderSetup(device, fb);
+	m_RenderSetups->clear();
+		
 	uint curr_size = m_Staging.m_Buffer ? m_Staging.m_Buffer->m_Size : 0;
 	if (size != curr_size)
 	{
@@ -2449,14 +2456,30 @@ void SCommandListAllocator::Begin(Device device, uint size)
 	m_Staging.m_Data = VK_NULL_HANDLE;
 
 	m_QueryOffset = 0;
+
+	VkCommandBufferBeginInfo cmdListInfo = {};
+	cmdListInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+	cmdListInfo.pNext = VK_NULL_HANDLE;
+	cmdListInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+
+	res = vkBeginCommandBuffer(m_VkCommandBuffer, &cmdListInfo);
+	ASSERT(res == VK_SUCCESS);
 }
 
-void SCommandListAllocator::End(Device device)
+void SCommandList::End(Device device)
 {
 	if (m_Staging.m_Data)
 	{
 		vkUnmapMemory(device->m_Device, m_Staging.m_Buffer->m_Memory);
 	}
+
+	if (m_QueryOffset)
+	{
+		vkCmdCopyQueryPoolResults(m_VkCommandBuffer, m_QueryPool, 0, m_QueryOffset, m_QueryBuffer->m_Buffer, 0, sizeof(uint64), VK_QUERY_RESULT_64_BIT | VK_QUERY_RESULT_WAIT_BIT);
+	}
+
+	VkResult res = vkEndCommandBuffer(m_VkCommandBuffer);
+	ASSERT(res == VK_SUCCESS);
 }
 
 
@@ -2484,16 +2507,16 @@ void BeginMarker(Context context, const char* name)
 {
 #ifdef USE_DEBUG_MARKERS
 	VkDebugMarkerMarkerInfoEXT info = { VK_STRUCTURE_TYPE_DEBUG_MARKER_MARKER_INFO_EXT, VK_NULL_HANDLE, name, { 0.0f, 0.0f, 0.0f, 0.0f } };
-	vkCmdDebugMarkerBegin(context->m_CommandBuffer, &info);
+	vkCmdDebugMarkerBegin(context->GetVkCommandBuffer(), &info);
 #endif
 
 	if (context->m_IsProfiling)
 	{
-		SCommandListAllocator* allocator = context->m_Allocator;
-		ASSERT(allocator->m_QueryOffset < MAX_QUERY_COUNT);
+		SCommandList* cmdList = context->m_CmdList;
+		ASSERT(cmdList->m_QueryOffset < MAX_QUERY_COUNT);
 
-		allocator->m_QueryNames[allocator->m_QueryOffset] = name;
-		vkCmdWriteTimestamp(context->m_CommandBuffer, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, allocator->m_QueryPool, allocator->m_QueryOffset++);
+		cmdList->m_QueryNames[cmdList->m_QueryOffset] = name;
+		vkCmdWriteTimestamp(context->GetVkCommandBuffer(), VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, cmdList->m_QueryPool, cmdList->m_QueryOffset++);
 	}
 }
 
@@ -2501,32 +2524,32 @@ void EndMarker(Context context)
 {
 	if (context->m_IsProfiling)
 	{
-		SCommandListAllocator* allocator = context->m_Allocator;
-		ASSERT(allocator->m_QueryOffset < MAX_QUERY_COUNT);
+		SCommandList* cmdList = context->m_CmdList;
+		ASSERT(cmdList->m_QueryOffset < MAX_QUERY_COUNT);
 
-		allocator->m_QueryNames[allocator->m_QueryOffset] = VK_NULL_HANDLE;
-		vkCmdWriteTimestamp(context->m_CommandBuffer, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, allocator->m_QueryPool, allocator->m_QueryOffset++);
+		cmdList->m_QueryNames[cmdList->m_QueryOffset] = VK_NULL_HANDLE;
+		vkCmdWriteTimestamp(context->GetVkCommandBuffer(), VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, cmdList->m_QueryPool, cmdList->m_QueryOffset++);
 	}
 
 #ifdef USE_DEBUG_MARKERS
-	vkCmdDebugMarkerEnd(context->m_CommandBuffer);
+	vkCmdDebugMarkerEnd(context->GetVkCommandBuffer());
 #endif
 }
+
 void SetRenderTarget(Context context, SResourceDesc target, uint slot)
 {
 	Device device = context->m_Device;
 	assert(slot < MAX_COLOR_TARGETS);
-	device->m_CurrentFrameBufferDesc.m_ColorTargets[slot] = target;
+	context->m_CurrentFrameBufferDesc.m_ColorTargets[slot] = target;
 }
+
 void SetDepthTarget(Context context, SResourceDesc depth)
 {
-	Device device = context->m_Device;
-	device->m_CurrentFrameBufferDesc.m_DepthTarget = depth;
+	context->m_CurrentFrameBufferDesc.m_DepthTarget = depth;
 }
 void SetPassParams(Context context, RenderPassFlags flags)
 {
-	Device device = context->m_Device;
-	device->m_CurrentFrameBufferDesc.m_PassFlags = flags;
+	context->m_CurrentFrameBufferDesc.m_PassFlags = flags;
 }
 
 void SetClearColors(Context context, const float clear_color[4], const float clear_depth[2])
@@ -2542,37 +2565,16 @@ void BeginContext(Context context, uint upload_buffer_size, const char* name, bo
 
 	Device device = context->m_Device;
 
-	// Use a fence to wait until the command buffer has finished execution before using it again
-	VkResult res = vkWaitForFences(device->m_Device, 1, &device->m_WaitFences[device->m_CurrentBuffer], VK_TRUE, UINT64_MAX);
-	ASSERT(res == VK_SUCCESS);
-	res = vkResetFences(device->m_Device, 1, &device->m_WaitFences[device->m_CurrentBuffer]);
-	ASSERT(res == VK_SUCCESS);
-	// TODO: Use a better allocation strategy
-	context->m_CommandBuffer = device->m_CommandBuffers[device->m_CurrentBuffer];
-    context->m_DescriptorPool = device->m_GrowDescriptorPools[device->m_CurrentBuffer];
-    ResetDescriptorPool(context);
-	device->m_Constants[device->m_CurrentBuffer].m_Cursor = 0;
-	for (auto& fb : *device->m_RenderSetups[device->m_CurrentBuffer])
-		DestroyRenderSetup(device, fb);
-	device->m_RenderSetups[device->m_CurrentBuffer]->clear();
-	device->m_CurrentRenderSetup[device->m_CurrentBuffer] = nullptr;
-	memset(&device->m_CurrentFrameBufferDesc, 0, sizeof(SFrameBuffer));
-	SCommandListAllocator* allocator = &device->m_CommandListAllocators[device->m_CurrentBuffer];
-	context->m_Allocator = allocator;
-	allocator->Begin(device, upload_buffer_size);
+	context->m_CurrentRenderSetup = nullptr;
+	memset(&context->m_CurrentFrameBufferDesc, 0, sizeof(SFrameBuffer));
+	
+	context->m_CmdList = &device->m_CommandBuffers[device->m_SwapchainImageId];
 
-
-	VkCommandBufferBeginInfo cmdBufInfo = {};
-	cmdBufInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-	cmdBufInfo.pNext = VK_NULL_HANDLE;
-	cmdBufInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-
-	res = vkBeginCommandBuffer(context->m_CommandBuffer, &cmdBufInfo);
-	ASSERT(res == VK_SUCCESS);
+	context->m_CmdList->Begin(device, upload_buffer_size);
 
 	if (profile)
 	{
-		vkCmdResetQueryPool(context->m_CommandBuffer, allocator->m_QueryPool, 0, MAX_QUERY_COUNT);
+		vkCmdResetQueryPool(context->GetVkCommandBuffer(), context->m_CmdList->m_QueryPool, 0, MAX_QUERY_COUNT);
 	}
 
 	BeginMarker(context, name);
@@ -2582,20 +2584,7 @@ void EndContext(Context context)
 {
 	EndMarker(context);
 
-	SCommandListAllocator* allocator = context->m_Allocator;
-
-	if (allocator->m_QueryOffset)
-	{
-		vkCmdCopyQueryPoolResults(context->m_CommandBuffer, allocator->m_QueryPool, 0, allocator->m_QueryOffset, allocator->m_QueryBuffer->m_Buffer, 0, sizeof(uint64), VK_QUERY_RESULT_64_BIT | VK_QUERY_RESULT_WAIT_BIT);
-	}
-
-	Device device = context->m_Device;
-	allocator->End(device);
-
-	VkResult res = vkEndCommandBuffer(context->m_CommandBuffer);
-	ASSERT(res == VK_SUCCESS);
-
-	context->m_Allocator = VK_NULL_HANDLE;
+	context->m_CmdList->End(GetDevice(context));
 }
 
 void SubmitContexts(Device device, uint count, SContext** context)
@@ -2614,10 +2603,10 @@ void SubmitContexts(Device device, uint count, SContext** context)
 		submit_info.pWaitSemaphores = &device->m_PresentSemaphore;
 		submit_info.waitSemaphoreCount = 1;
 	}
-	submit_info.pCommandBuffers = &context[0]->m_CommandBuffer;
+	submit_info.pCommandBuffers = &context[0]->m_CmdList->m_VkCommandBuffer;
 	submit_info.commandBufferCount = 1;
 
-	VkResult res = vkQueueSubmit(device->m_GraphicsQueue, 1, &submit_info, device->m_WaitFences[device->m_CurrentBuffer]);
+	VkResult res = vkQueueSubmit(device->m_GraphicsQueue, 1, &submit_info, context[0]->m_CmdList->m_WaitFence);
 	ASSERT(res == VK_SUCCESS);
 }
 
@@ -2625,27 +2614,27 @@ void Finish(Device device)
 {
 	//vkQueueWaitIdle(device->m_Queue);
 
-	VkResult res = vkWaitForFences(device->m_Device, 1, &device->m_WaitFences[device->m_CurrentBuffer], VK_TRUE, UINT64_MAX);
+	VkResult res = vkWaitForFences(device->m_Device, 1, &device->m_MainContext->m_CmdList->m_WaitFence, VK_TRUE, UINT64_MAX);
 	ASSERT(res == VK_SUCCESS);
 }
 
 uint GetProfileData(Device device, SProfileData (&OutData)[MAX_QUERY_COUNT])
 {
-	const SCommandListAllocator& allocator = device->m_CommandListAllocators[device->m_CurrentBuffer];
+	const SCommandList& cmdList = *device->m_MainContext->m_CmdList;
 
-	const uint count = allocator.m_QueryOffset;
+	const uint count = cmdList.m_QueryOffset;
 	if (count)
 	{
 		uint64* data = VK_NULL_HANDLE;
-		vkMapMemory(device->m_Device, allocator.m_QueryBuffer->m_Memory, 0, count * sizeof(uint64), 0, (void**) &data);
+		vkMapMemory(device->m_Device, cmdList.m_QueryBuffer->m_Memory, 0, count * sizeof(uint64), 0, (void**) &data);
 
 		for (uint i = 0; i < count; i++)
 		{
 			OutData[i].m_TimeStamp = data[i];
-			OutData[i].m_Name = allocator.m_QueryNames[i];
+			OutData[i].m_Name = cmdList.m_QueryNames[i];
 		}
 
-		vkUnmapMemory(device->m_Device, allocator.m_QueryBuffer->m_Memory);
+		vkUnmapMemory(device->m_Device, cmdList.m_QueryBuffer->m_Memory);
 	}
 
 	return count;
@@ -2662,7 +2651,7 @@ void CopyBuffer(Context context, const Buffer dest, const Buffer src)
 	buffer_copy.srcOffset = 0;
 	buffer_copy.dstOffset = 0;
 	buffer_copy.size = dest->m_Size;
-	vkCmdCopyBuffer(context->m_CommandBuffer, src->m_Buffer, dest->m_Buffer, 1, &buffer_copy);
+	vkCmdCopyBuffer(context->GetVkCommandBuffer(), src->m_Buffer, dest->m_Buffer, 1, &buffer_copy);
 }
 
 uint8* MapBuffer(const SMapBufferParams& params)
@@ -2671,10 +2660,10 @@ uint8* MapBuffer(const SMapBufferParams& params)
 
 	if (params.m_Buffer->m_HeapType == HEAP_DEFAULT)
 	{
-		SCommandListAllocator* allocator = params.m_Context->m_Allocator;
+		SCommandList* cmdList = params.m_Context->m_CmdList;
 
-		uint offset = AllocateBufferSlice(params.m_Device, allocator->m_Staging, params.m_Size, 16);
-		data = allocator->m_Staging.m_Data + offset;
+		uint offset = AllocateBufferSlice(params.m_Device, cmdList->m_Staging, params.m_Size, 16);
+		data = cmdList->m_Staging.m_Data + offset;
 
 		params.m_InternalOffset = offset;
 	}
@@ -2697,7 +2686,7 @@ void UnmapBuffer(const SMapBufferParams& params)
 		buffer_copy.srcOffset = params.m_InternalOffset;
 		buffer_copy.dstOffset = params.m_Offset;
 		buffer_copy.size = params.m_Size;
-		vkCmdCopyBuffer(context->m_CommandBuffer, context->m_Allocator->m_Staging.m_Buffer->m_Buffer, params.m_Buffer->m_Buffer, 1, &buffer_copy);
+		vkCmdCopyBuffer(context->GetVkCommandBuffer(), context->m_CmdList->m_Staging.m_Buffer->m_Buffer, params.m_Buffer->m_Buffer, 1, &buffer_copy);
 	}
 	else
 	{
@@ -2729,11 +2718,11 @@ void SetTextureData(Context context, Texture texture, uint mip, uint slice, cons
 	uint dst_pitch = Align(pitch, format_size);
 
 	// Grab upload buffer space
-	uint dst_offset = AllocateBufferSlice(context->m_Device, context->m_Allocator->m_Staging, dst_pitch * rows, format_size);
+	uint dst_offset = AllocateBufferSlice(context->m_Device, context->m_CmdList->m_Staging, dst_pitch * rows, format_size);
 
 	// Copy data in place
 	uint8* src_data = (uint8*) data;
-	uint8* dst_data = context->m_Allocator->m_Staging.m_Data + dst_offset;
+	uint8* dst_data = context->m_CmdList->m_Staging.m_Data + dst_offset;
 	for (uint32 r = 0; r < rows; ++r)
 	{
 		memcpy(dst_data, src_data, src_pitch);
@@ -2753,7 +2742,7 @@ void SetTextureData(Context context, Texture texture, uint mip, uint slice, cons
 	barrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
 	barrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 	barrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-	vkCmdPipelineBarrier(context->m_CommandBuffer, VK_PIPELINE_STAGE_HOST_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, VK_NULL_HANDLE, 0, VK_NULL_HANDLE, 1, &barrier);
+	vkCmdPipelineBarrier(context->GetVkCommandBuffer(), VK_PIPELINE_STAGE_HOST_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, 0, 0, VK_NULL_HANDLE, 0, VK_NULL_HANDLE, 1, &barrier);
 
 
 	// Issue a copy from upload buffer to texture
@@ -2768,14 +2757,14 @@ void SetTextureData(Context context, Texture texture, uint mip, uint slice, cons
 	image_copy.imageExtent.depth  = d;
 	image_copy.bufferRowLength = /*blocks number*/(dst_pitch / format_size) * /*pixels per block*/(w / cols)/*=pixel number*/;
 	image_copy.bufferImageHeight = h;
-	vkCmdCopyBufferToImage(context->m_CommandBuffer, context->m_Allocator->m_Staging.m_Buffer->m_Buffer, texture->m_Image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &image_copy);
+	vkCmdCopyBufferToImage(context->GetVkCommandBuffer(), context->m_CmdList->m_Staging.m_Buffer->m_Buffer, texture->m_Image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &image_copy);
 
 
 	barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
 	barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
 	barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
 	barrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-	vkCmdPipelineBarrier(context->m_CommandBuffer, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, VK_NULL_HANDLE, 0, VK_NULL_HANDLE, 1, &barrier);
+	vkCmdPipelineBarrier(context->GetVkCommandBuffer(), VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, VK_NULL_HANDLE, 0, VK_NULL_HANDLE, 1, &barrier);
 }
 RenderPass BeginRenderPass(Context context, const char* name)
 {
@@ -2783,7 +2772,7 @@ RenderPass BeginRenderPass(Context context, const char* name)
 	SRenderPassDesc passDesc; memset(&passDesc, 0, sizeof(SRenderPassDesc));
 	passDesc.msaa_samples = 1;
 	int index = 0;
-	for (SResourceDesc& color_target : device->m_CurrentFrameBufferDesc.m_ColorTargets)
+	for (SResourceDesc& color_target : context->m_CurrentFrameBufferDesc.m_ColorTargets)
 	{
 		if (color_target.m_Resource)
 		{
@@ -2791,21 +2780,24 @@ RenderPass BeginRenderPass(Context context, const char* name)
 		}
 		index++;
 	}
-	SResourceDesc& depth_target = device->m_CurrentFrameBufferDesc.m_DepthTarget;
+
+	SResourceDesc& depth_target = context->m_CurrentFrameBufferDesc.m_DepthTarget;
 	if (depth_target.m_Resource)
 		passDesc.m_DepthFormat = ((Texture)depth_target.m_Resource)->m_Format;
-	passDesc.m_Flags = device->m_CurrentFrameBufferDesc.m_PassFlags;
+	
+	passDesc.m_Flags = context->m_CurrentFrameBufferDesc.m_PassFlags;
+	
 	RenderPass pass = AcquireRenderPass(device, passDesc);
-	device->m_CurrentRenderSetup[device->m_CurrentBuffer] = CreateRenderSetup(device, pass, device->m_CurrentFrameBufferDesc);
-	RenderSetupVector& vec = *device->m_RenderSetups[device->m_CurrentBuffer];
-	vec.push_back(device->m_CurrentRenderSetup[device->m_CurrentBuffer]);
-	BeginRenderPass(context, name, pass, device->m_CurrentRenderSetup[device->m_CurrentBuffer], &device->m_ClearColor[0], &device->m_ClearDepth[0]);
+	context->m_CurrentRenderSetup = CreateRenderSetup(device, pass, context->m_CurrentFrameBufferDesc);
+	RenderSetupVector& vec = *context->m_CmdList->m_RenderSetups;
+	
+	vec.push_back(context->m_CurrentRenderSetup);
+	BeginRenderPass(context, name, pass, context->m_CurrentRenderSetup, &device->m_ClearColor[0], &device->m_ClearDepth[0]);
 	return pass;
 }
 void EndRenderPass(Context context)
 {
-	Device device = context->m_Device;
-	EndRenderPass(context, device->m_CurrentRenderSetup[device->m_CurrentBuffer]);
+	EndRenderPass(context, context->m_CurrentRenderSetup);
 }
 
 void BeginRenderPass(Context context, const char* name, const RenderPass render_pass, const RenderSetup setup, const float* clear_color, const float* clear_depth)
@@ -2837,7 +2829,7 @@ void BeginRenderPass(Context context, const char* name, const RenderPass render_
 	begin_info.clearValueCount = uint32(clear_value - clear_values);
 	begin_info.pClearValues = begin_info.clearValueCount? clear_values : VK_NULL_HANDLE;
 	begin_info.framebuffer = setup->m_FrameBuffer;
-	vkCmdBeginRenderPass(context->m_CommandBuffer, &begin_info, VK_SUBPASS_CONTENTS_INLINE);
+	vkCmdBeginRenderPass(context->GetVkCommandBuffer(), &begin_info, VK_SUBPASS_CONTENTS_INLINE);
 
 	VkViewport viewport = {};
 	viewport.x = 0;
@@ -2846,19 +2838,19 @@ void BeginRenderPass(Context context, const char* name, const RenderPass render_
 	viewport.height = -(float) setup->m_Height;
 	viewport.minDepth = 0.0f;
 	viewport.maxDepth = 1.0f;
-	vkCmdSetViewport(context->m_CommandBuffer, 0, 1, &viewport);
+	vkCmdSetViewport(context->GetVkCommandBuffer(), 0, 1, &viewport);
 
 	VkRect2D scissor = {};
 	scissor.extent.width  = setup->m_Width;
 	scissor.extent.height = setup->m_Height;
 	scissor.offset.x = 0;
 	scissor.offset.y = 0;
-	vkCmdSetScissor(context->m_CommandBuffer, 0, 1, &scissor);
+	vkCmdSetScissor(context->GetVkCommandBuffer(), 0, 1, &scissor);
 }
 
 void EndRenderPass(Context context, const RenderSetup setup)
 {
-	vkCmdEndRenderPass(context->m_CommandBuffer);
+	vkCmdEndRenderPass(context->GetVkCommandBuffer());
 	EndMarker(context);
 }
 
@@ -2868,25 +2860,25 @@ void TransitionRenderSetup(Context context, const RenderSetup setup, EResourceSt
 
 void SetRootSignature(Context context, const RootSignature root)
 {
-	context->m_CurrRootSignature = root;
+	context->m_CurrentRootSignature = root;
 }
 
 void SetPipeline(Context context, const Pipeline pipeline)
 {
-	vkCmdBindPipeline(context->m_CommandBuffer, pipeline->m_BindPoint, pipeline->m_Pipeline);
+	vkCmdBindPipeline(context->GetVkCommandBuffer(), pipeline->m_BindPoint, pipeline->m_Pipeline);
 }
 
 void SetVertexSetup(Context context, const VertexSetup setup)
 {
 	if (setup->m_IndexBuffer)
 	{
-		vkCmdBindIndexBuffer(context->m_CommandBuffer, setup->m_IndexBuffer, 0, setup->m_IndexType);
+		vkCmdBindIndexBuffer(context->GetVkCommandBuffer(), setup->m_IndexBuffer, 0, setup->m_IndexType);
 	}
 
 	if (setup->m_VertexBuffer)
 	{
 		const VkDeviceSize offsets[] = { 0 };
-		vkCmdBindVertexBuffers(context->m_CommandBuffer, 0, 1, &setup->m_VertexBuffer, offsets);
+		vkCmdBindVertexBuffers(context->GetVkCommandBuffer(), 0, 1, &setup->m_VertexBuffer, offsets);
 	}
 }
 
@@ -2899,26 +2891,24 @@ uint8* SetVertexBuffer(Context context, uint stream, uint stride, uint count)
 uint32 AllocateConstantsSlice(Context context, uint size)
 {
 	Device device = GetDevice(context);
-	uint32 offset = AllocateBufferSlice(device, device->m_Constants[device->m_CurrentBuffer], size, device->m_UniformBufferAlignment);
+	uint32 offset = AllocateBufferSlice(device, context->m_CmdList->m_Constants, size, device->m_UniformBufferAlignment);
 	return offset;
 }
 Buffer GetConstantBuffer(Context context)
 {
-	Device device = GetDevice(context);
-	return  device->m_Constants[device->m_CurrentBuffer].m_Buffer;
+	return  context->m_CmdList->m_Constants.m_Buffer;
 }
 uint8* GetConstantBufferData(Context context, uint32 offset)
 {
-	Device device = GetDevice(context);
-	return device->m_Constants[device->m_CurrentBuffer].m_Data + offset;
+	return context->m_CmdList->m_Constants.m_Data + offset;
 }
 
 void SetRootConstants(Context context, uint slot, const void* data, uint count)
 {
-	ASSERT(count == context->m_CurrRootSignature->m_Slots[slot].m_Size);
+	ASSERT(count == context->m_CurrentRootSignature->m_Slots[slot].m_Size);
 
-	uint32 offset = context->m_CurrRootSignature->m_Slots[slot].m_Offset;
-	vkCmdPushConstants(context->m_CommandBuffer, context->m_CurrRootSignature->m_PipelineLayout, VK_SHADER_STAGE_ALL, offset, count * sizeof(uint32), data);
+	uint32 offset = context->m_CurrentRootSignature->m_Slots[slot].m_Offset;
+	vkCmdPushConstants(context->GetVkCommandBuffer(), context->m_CurrentRootSignature->m_PipelineLayout, VK_SHADER_STAGE_ALL, offset, count * sizeof(uint32), data);
 }
 
 void SetRootTextureBuffer(Context context, uint slot, const Buffer buffer)
@@ -2928,46 +2918,46 @@ void SetRootTextureBuffer(Context context, uint slot, const Buffer buffer)
 
 void SetGraphicsResourceTable(Context context, uint slot, const ResourceTable table)
 {
-	uint32 descriptor_set = context->m_CurrRootSignature->m_Slots[slot].m_Offset;
-	vkCmdBindDescriptorSets(context->m_CommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, context->m_CurrRootSignature->m_PipelineLayout, descriptor_set, 1, &table->m_DescriptorSet, 0, VK_NULL_HANDLE);
+	uint32 descriptor_set = context->m_CurrentRootSignature->m_Slots[slot].m_Offset;
+	vkCmdBindDescriptorSets(context->GetVkCommandBuffer(), VK_PIPELINE_BIND_POINT_GRAPHICS, context->m_CurrentRootSignature->m_PipelineLayout, descriptor_set, 1, &table->m_DescriptorSet, 0, VK_NULL_HANDLE);
 }
 
 void SetComputeResourceTable(Context context, uint slot, const ResourceTable table)
 {
-	uint32 descriptor_set = context->m_CurrRootSignature->m_Slots[slot].m_Offset;
-	vkCmdBindDescriptorSets(context->m_CommandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, context->m_CurrRootSignature->m_PipelineLayout, descriptor_set, 1, &table->m_DescriptorSet, 0, VK_NULL_HANDLE);
+	uint32 descriptor_set = context->m_CurrentRootSignature->m_Slots[slot].m_Offset;
+	vkCmdBindDescriptorSets(context->GetVkCommandBuffer(), VK_PIPELINE_BIND_POINT_COMPUTE, context->m_CurrentRootSignature->m_PipelineLayout, descriptor_set, 1, &table->m_DescriptorSet, 0, VK_NULL_HANDLE);
 }
 
 void SetGraphicsSamplerTable(Context context, uint slot, const SamplerTable table)
 {
-	uint32 descriptor_set = context->m_CurrRootSignature->m_Slots[slot].m_Offset;
-	vkCmdBindDescriptorSets(context->m_CommandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, context->m_CurrRootSignature->m_PipelineLayout, descriptor_set, 1, &table->m_DescriptorSet, 0, VK_NULL_HANDLE);
+	uint32 descriptor_set = context->m_CurrentRootSignature->m_Slots[slot].m_Offset;
+	vkCmdBindDescriptorSets(context->GetVkCommandBuffer(), VK_PIPELINE_BIND_POINT_GRAPHICS, context->m_CurrentRootSignature->m_PipelineLayout, descriptor_set, 1, &table->m_DescriptorSet, 0, VK_NULL_HANDLE);
 }
 
 void SetComputeSamplerTable(Context context, uint slot, const SamplerTable table)
 {
-	uint32 descriptor_set = context->m_CurrRootSignature->m_Slots[slot].m_Offset;
-	vkCmdBindDescriptorSets(context->m_CommandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, context->m_CurrRootSignature->m_PipelineLayout, descriptor_set, 1, &table->m_DescriptorSet, 0, VK_NULL_HANDLE);
+	uint32 descriptor_set = context->m_CurrentRootSignature->m_Slots[slot].m_Offset;
+	vkCmdBindDescriptorSets(context->GetVkCommandBuffer(), VK_PIPELINE_BIND_POINT_COMPUTE, context->m_CurrentRootSignature->m_PipelineLayout, descriptor_set, 1, &table->m_DescriptorSet, 0, VK_NULL_HANDLE);
 }
 
 void Draw(Context context, uint start, uint count)
 {
-	vkCmdDraw(context->m_CommandBuffer, count, 1, start, 0);
+	vkCmdDraw(context->GetVkCommandBuffer(), count, 1, start, 0);
 }
 
 void DrawIndexed(Context context, uint start, uint count)
 {
-	vkCmdDrawIndexed(context->m_CommandBuffer, count, 1, start, 0, 0);
+	vkCmdDrawIndexed(context->GetVkCommandBuffer(), count, 1, start, 0, 0);
 }
 
 void DrawIndexedInstanced(Context context, uint start, uint count, uint start_instance, uint instance_count)
 {
-	vkCmdDrawIndexed(context->m_CommandBuffer, count, instance_count, start, 0, start_instance);
+	vkCmdDrawIndexed(context->GetVkCommandBuffer(), count, instance_count, start, 0, start_instance);
 }
 
 void DrawIndexedIndirect(Context context, Buffer buffer, uint offset)
 {
-	vkCmdDrawIndexedIndirect(context->m_CommandBuffer, buffer->m_Buffer, offset, 1, 0);
+	vkCmdDrawIndexedIndirect(context->GetVkCommandBuffer(), buffer->m_Buffer, offset, 1, 0);
 }
 
 void DrawMeshTask(Context context, uint start, uint count)
@@ -2976,26 +2966,26 @@ void DrawMeshTask(Context context, uint start, uint count)
 	const uint max_count = context->m_Device->m_MaxDrawMeshTasksCount;
 	while (count > max_count)
 	{
-		vkCmdDrawMeshTasks(context->m_CommandBuffer, max_count, start);
+		vkCmdDrawMeshTasks(context->GetVkCommandBuffer(), max_count, start);
 		start += max_count;
 		count -= max_count;
 	}
-	vkCmdDrawMeshTasks(context->m_CommandBuffer, count, start);
+	vkCmdDrawMeshTasks(context->GetVkCommandBuffer(), count, start);
 }
 
 void Dispatch(Context context, uint group_x, uint group_y, uint group_z)
 {
-	vkCmdDispatch(context->m_CommandBuffer, group_x, group_y, group_z);
+	vkCmdDispatch(context->GetVkCommandBuffer(), group_x, group_y, group_z);
 }
 
 void DispatchIndirect(Context context, Buffer buffer, uint offset)
 {
-	vkCmdDispatchIndirect(context->m_CommandBuffer, buffer->m_Buffer, offset);
+	vkCmdDispatchIndirect(context->GetVkCommandBuffer(), buffer->m_Buffer, offset);
 }
 
 void ClearBuffer(Context context, Buffer buffer, uint32 clear_value)
 {
-	vkCmdFillBuffer(context->m_CommandBuffer, buffer->m_Buffer, 0, VK_WHOLE_SIZE, clear_value);
+	vkCmdFillBuffer(context->GetVkCommandBuffer(), buffer->m_Buffer, 0, VK_WHOLE_SIZE, clear_value);
 }
 
 void UAVBarrier(Context context, Buffer buffer)
@@ -3004,7 +2994,7 @@ void UAVBarrier(Context context, Buffer buffer)
 	mem_barrier.sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER;
 	mem_barrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
 	mem_barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-	vkCmdPipelineBarrier(context->m_CommandBuffer, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0, 1, &mem_barrier, 0, VK_NULL_HANDLE, 0, VK_NULL_HANDLE);
+	vkCmdPipelineBarrier(context->GetVkCommandBuffer(), VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0, 1, &mem_barrier, 0, VK_NULL_HANDLE, 0, VK_NULL_HANDLE);
 
 
 #if 0
@@ -3017,7 +3007,7 @@ void UAVBarrier(Context context, Buffer buffer)
 	mem_barrier.dstAccessMask =
 		VK_ACCESS_INDIRECT_COMMAND_READ_BIT | VK_ACCESS_INDEX_READ_BIT | VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT | VK_ACCESS_UNIFORM_READ_BIT | VK_ACCESS_INPUT_ATTACHMENT_READ_BIT | VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT | VK_ACCESS_COLOR_ATTACHMENT_READ_BIT |
 		VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT | VK_ACCESS_TRANSFER_READ_BIT | VK_ACCESS_TRANSFER_WRITE_BIT | VK_ACCESS_HOST_READ_BIT |  VK_ACCESS_HOST_WRITE_BIT;
-	vkCmdPipelineBarrier(context->m_CommandBuffer, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0, 1, &mem_barrier, 0, VK_NULL_HANDLE, 0, VK_NULL_HANDLE);
+	vkCmdPipelineBarrier(context->GetVkCommandBuffer(), VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0, 1, &mem_barrier, 0, VK_NULL_HANDLE, 0, VK_NULL_HANDLE);
 #endif
 }
 
@@ -3113,6 +3103,6 @@ void Barrier(Context context, const SBarrierDesc* barriers, uint count)
         }
     }
 
-    vkCmdPipelineBarrier(context->m_CommandBuffer, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0, 1, &mem_barrier, 0, VK_NULL_HANDLE, image_count, image_count ? &img_barrier : VK_NULL_HANDLE);
+    vkCmdPipelineBarrier(context->GetVkCommandBuffer(), VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0, 1, &mem_barrier, 0, VK_NULL_HANDLE, image_count, image_count ? &img_barrier : VK_NULL_HANDLE);
 }
 #endif

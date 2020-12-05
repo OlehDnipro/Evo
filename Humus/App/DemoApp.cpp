@@ -225,8 +225,7 @@ void DemoApp::Start()
 	m_Timer.Reset();
 
 	ResetCamera();
-
-
+	
 	Context context = GetMainContext(m_Device);
 	EndContext(context);
 
@@ -277,11 +276,11 @@ void DemoApp::MakeFrame()
 	Context context = GetMainContext(m_Device);
 
 	uint buffer_index = GetBackBufferIndex(m_Device);
-	RenderSetup back_buffer_setup = GetBackBufferSetup(m_Device, buffer_index);
-
+	//RenderSetup back_buffer_setup = GetBackBufferSetup(m_Device, buffer_index);
+	
 	BeginContext(context, m_UploadBufferSize, "Frame", m_ShowProfile);
 
-		TransitionRenderSetup(context, back_buffer_setup, RS_PRESENT, RS_RENDER_TARGET);
+		//TransitionRenderSetup(context, back_buffer_setup, RS_PRESENT, RS_RENDER_TARGET);
 
 		DrawFrame(context, buffer_index);
 		//DrawGUI(context, buffer_index, profile_data, profile_data_count);
@@ -290,7 +289,7 @@ void DemoApp::MakeFrame()
 		{
 		}
 
-		TransitionRenderSetup(context, back_buffer_setup, RS_RENDER_TARGET, RS_PRESENT);
+		//TransitionRenderSetup(context, back_buffer_setup, RS_RENDER_TARGET, RS_PRESENT);
 
 	EndContext(context);
 	SubmitContexts(m_Device, 1, &context);
@@ -317,8 +316,8 @@ void DemoApp::DrawGUI(Context context, uint buffer_index, const SProfileData* pr
 		-1.0f, 1.0f, 0, 1
 	);
 	m_Primitives.SetMatrix(context, scale_bias);
-
-	BeginRenderPass(context, "GUI", GetBackBufferRenderPass(m_Device), GetBackBufferSetup(m_Device, buffer_index));
+	SetRenderTarget(context, GetBackBuffer(m_Device, buffer_index), 0);
+	BeginRenderPass(context, "GUI");
 	{
 		if (m_Widgets.GoToLast())
 		{
@@ -403,7 +402,7 @@ void DemoApp::DrawGUI(Context context, uint buffer_index, const SProfileData* pr
 		}
 #endif
 	}
-	EndRenderPass(context, GetBackBufferSetup(m_Device, buffer_index));
+	EndRenderPass(context);
 }
 
 bool DemoApp::OnKey(const uint key, const bool pressed)
