@@ -95,8 +95,6 @@ struct SDevice
 	VkCommandPool m_CommandPool;
 	VkDescriptorPool m_DescriptorPool;
 	RenderPass m_BackBufferRenderPass;
-	float m_ClearColor[4];
-	float m_ClearDepth[2];
 
 	// Default states
 	BlendState m_DefaultBlendState;
@@ -124,6 +122,9 @@ struct SContext
 	RootSignature m_CurrentRootSignature;
 	SFrameBuffer m_CurrentFrameBufferDesc;
 	RenderSetup m_CurrentRenderSetup;
+	float m_ClearColor[4];
+	float m_ClearDepth[2];
+
 	Device m_Device;
 
 	bool m_IsProfiling;
@@ -340,8 +341,8 @@ struct SRenderSetup
 	VkFramebuffer m_FrameBuffer;
 	uint m_Width;
 	uint m_Height;
-
-	VkImageView m_Views[3];
+	RenderPass m_Pass;
+	VkImageView m_Views[MAX_COLOR_TARGETS + 2];
 };
 
 struct SRootSignature
@@ -976,7 +977,7 @@ Device CreateDevice(DeviceParams& params)
 	}
 
 	ImageFormat format = (image_format.format == VK_FORMAT_B8G8R8A8_UNORM) ? IMGFMT_BGRA8 : IMGFMT_RGBA8;
-	device->m_BackBufferRenderPass = CreateRenderPass(device, format, IMGFMT_INVALID, FINAL_PRESENT);
+	device->m_BackBufferRenderPass = CreateRenderPass(device, format, IMGFMT_INVALID, FLAG_NONE);
 	
 	if (!CreateBackBufferSetups(device, params.m_Width, params.m_Height, format))
 		return false;
@@ -1574,7 +1575,7 @@ RenderPass AcquireRenderPass(Device device, const SRenderPassDesc& desc)
 			attachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
 			attachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
 			attachment.initialLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-			attachment.finalLayout = ((desc.m_Flags & FINAL_PRESENT) && desc.msaa_samples == 1) ? VK_IMAGE_LAYOUT_PRESENT_SRC_KHR : VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+			attachment.finalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 			colorRTCount++;
 		}
 	}
@@ -1605,7 +1606,7 @@ RenderPass AcquireRenderPass(Device device, const SRenderPassDesc& desc)
 		attachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
 		attachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
 		attachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-		attachment.finalLayout = (desc.m_Flags & FINAL_PRESENT)? VK_IMAGE_LAYOUT_PRESENT_SRC_KHR : VK_IMAGE_LAYOUT_GENERAL;
+		attachment.finalLayout = VK_IMAGE_LAYOUT_GENERAL;
 	}
 
 	VkSubpassDescription subpass_desc = {};
@@ -1736,6 +1737,7 @@ RenderSetup CreateRenderSetup(Device device, RenderPass render_pass, SFrameBuffe
 	setup->m_FrameBuffer = frame_buffer;
 	setup->m_Width  = width;
 	setup->m_Height = height;
+	setup->m_Pass = render_pass;
 	memcpy(setup->m_Views, attachments, attachment_count * sizeof(VkImageView));
 
 	return setup;
@@ -2547,16 +2549,11 @@ void SetDepthTarget(Context context, SResourceDesc depth)
 {
 	context->m_CurrentFrameBufferDesc.m_DepthTarget = depth;
 }
-void SetPassParams(Context context, RenderPassFlags flags)
-{
-	context->m_CurrentFrameBufferDesc.m_PassFlags = flags;
-}
 
 void SetClearColors(Context context, const float clear_color[4], const float clear_depth[2])
 {
-	Device device = context->m_Device;
-	memcpy(&device->m_ClearColor[0], &clear_color[0], 4*sizeof(float));
-	memcpy(&device->m_ClearDepth[0], &clear_depth[0], 2*sizeof(float));
+	memcpy(&context->m_ClearColor[0], &clear_color[0], 4*sizeof(float));
+	memcpy(&context->m_ClearDepth[0], &clear_depth[0], 2*sizeof(float));
 }
 
 void BeginContext(Context context, uint upload_buffer_size, const char* name, bool profile)
@@ -2766,7 +2763,13 @@ void SetTextureData(Context context, Texture texture, uint mip, uint slice, cons
 	barrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 	vkCmdPipelineBarrier(context->GetVkCommandBuffer(), VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, VK_NULL_HANDLE, 0, VK_NULL_HANDLE, 1, &barrier);
 }
-RenderPass BeginRenderPass(Context context, const char* name)
+
+RenderPass GetCurrentRenderPass(Context context)
+{
+	return context->m_CurrentRenderSetup->m_Pass;
+}
+
+void BeginRenderPass(Context context, const char* name, bool clearColor, bool clearDepth)
 {
 	Device device = context->m_Device;
 	SRenderPassDesc passDesc; memset(&passDesc, 0, sizeof(SRenderPassDesc));
@@ -2785,36 +2788,37 @@ RenderPass BeginRenderPass(Context context, const char* name)
 	if (depth_target.m_Resource)
 		passDesc.m_DepthFormat = ((Texture)depth_target.m_Resource)->m_Format;
 	
-	passDesc.m_Flags = context->m_CurrentFrameBufferDesc.m_PassFlags;
+	if (clearColor && context->m_CurrentFrameBufferDesc.m_ColorTargets[0].m_Resource)
+		passDesc.m_Flags = passDesc.m_Flags | CLEAR_COLOR;
+	if (clearDepth && context->m_CurrentFrameBufferDesc.m_DepthTarget.m_Resource)
+		passDesc.m_Flags = passDesc.m_Flags | CLEAR_DEPTH;
 	
 	RenderPass pass = AcquireRenderPass(device, passDesc);
 	context->m_CurrentRenderSetup = CreateRenderSetup(device, pass, context->m_CurrentFrameBufferDesc);
 	RenderSetupVector& vec = *context->m_CmdList->m_RenderSetups;
 	
 	vec.push_back(context->m_CurrentRenderSetup);
-	BeginRenderPass(context, name, pass, context->m_CurrentRenderSetup, &device->m_ClearColor[0], &device->m_ClearDepth[0]);
-	return pass;
+	BeginRenderPass(context, name, pass, context->m_CurrentRenderSetup);
 }
 void EndRenderPass(Context context)
 {
 	EndRenderPass(context, context->m_CurrentRenderSetup);
 }
 
-void BeginRenderPass(Context context, const char* name, const RenderPass render_pass, const RenderSetup setup, const float* clear_color, const float* clear_depth)
+void BeginRenderPass(Context context, const char* name, const RenderPass render_pass, const RenderSetup setup)
 {
 	BeginMarker(context, name);
 
 	VkClearValue clear_values[2];
 	VkClearValue* clear_value = &clear_values[0];
-
 	if (render_pass->m_Flags & CLEAR_COLOR)
 	{
-		memcpy(clear_value->color.float32, clear_color, 4 * sizeof(float));
+		memcpy(clear_value->color.float32, &context->m_ClearColor[0], 4 * sizeof(float));
 		clear_value++;
 	}
 	if (render_pass->m_Flags & CLEAR_DEPTH)
 	{
-		clear_value->depthStencil = { 1.0f, 0 };
+		clear_value->depthStencil = { context->m_ClearDepth[0], (uint32)context->m_ClearDepth[1] };
 		clear_value++;
 	}
 

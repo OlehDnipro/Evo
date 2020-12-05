@@ -62,7 +62,7 @@ public:
 	};
 	void SetShadowMap(Texture shadowMap){m_ShadowProvider.m_ShadowCascades = shadowMap;};
 	bool CreateResources(Device device);
-	void SetPassParameters(RenderPass pass, PassEnum passId, int cascade = -1);
+	void SetPassParameters(Context context, PassEnum passId, int cascade = -1);
 	void Draw(Context context);
 	void Update(Context context);
 	void SetCameraLookAt(vec3 eye, vec3 target,vec3 up);

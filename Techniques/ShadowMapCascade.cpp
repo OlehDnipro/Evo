@@ -102,7 +102,7 @@ ShadowMapCascade::~ShadowMapCascade()
 	m_Cache.DestroyRootSignature(m_Device);
 }
 
-void ShadowMapCascade::SetPassParameters(RenderPass pass, PassEnum passId, int cascade)
+void ShadowMapCascade::SetPassParameters(Context context, PassEnum passId, int cascade)
 {
 	m_currentPass = passId;
 	m_curCascade = cascade;
@@ -115,7 +115,7 @@ void ShadowMapCascade::SetPassParameters(RenderPass pass, PassEnum passId, int c
 		SPipelineParams p_params;
 		p_params.m_Name = "ShadowMapCascade";
 		p_params.m_RootSignature = m_Cache.GetRootSignature();
-		p_params.m_RenderPass = pass;
+		p_params.m_RenderPass = GetCurrentRenderPass(context);
 		if (passId == PassEnum::MainPass)
 		{
 			p_params.m_VS =  NShadowMapCascade::VSMainPass ;

@@ -203,9 +203,8 @@ public:
 		for (int i = 0; i < SHADOW_MAP_CASCADE_COUNT; i++)
 		{
 			SetDepthTarget(context, { m_ShadowMap, {i, -1, -1} });
-			SetPassParams(context, CLEAR_DEPTH);
-			RenderPass pass = BeginRenderPass(context, "Shadow");
-			m_Shadows.SetPassParameters(pass, ShadowMapCascade::ShadowPass, i);
+			BeginRenderPass(context, "Shadow");
+			m_Shadows.SetPassParameters(context, ShadowMapCascade::ShadowPass, i);
 			m_Shadows.Draw(context);
 			EndRenderPass(context);
 		}
@@ -214,10 +213,9 @@ public:
         Texture bb = GetBackBuffer(GetDevice(), buffer_index);
 		SetRenderTarget(context, bb, 0);
 		SetDepthTarget(context, m_DepthBuffer);
-		SetPassParams(context, CLEAR_COLOR | CLEAR_DEPTH);
         Barrier(context, { {bb , EResourceState::RS_RENDER_TARGET} });
-		RenderPass pass = BeginRenderPass(context, "Backbuffer");
-		m_Shadows.SetPassParameters(pass, ShadowMapCascade::MainPass);
+		BeginRenderPass(context, "Backbuffer");
+		m_Shadows.SetPassParameters(context, ShadowMapCascade::MainPass);
 		m_Shadows.Draw(context);
 		EndRenderPass(context);
         Barrier(context, { { bb , EResourceState::RS_PRESENT} });

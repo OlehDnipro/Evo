@@ -372,7 +372,6 @@ enum RenderPassFlags:uint8
 	FLAG_NONE	  = 0x0,
 	CLEAR_COLOR   = 0x1,
 	CLEAR_DEPTH   = 0x2,
-	FINAL_PRESENT = 0x4,
 };
 #define MAX_COLOR_TARGETS 5
 struct SRenderPassDesc
@@ -386,7 +385,6 @@ struct SFrameBuffer
 {
 	SResourceDesc m_ColorTargets[MAX_COLOR_TARGETS];
 	SResourceDesc m_DepthTarget, m_ResolveTarget;
-	RenderPassFlags m_PassFlags;
 };
 inline RenderPassFlags operator | (RenderPassFlags a, RenderPassFlags b) { return RenderPassFlags(int(a) | int(b)); }
 
@@ -589,14 +587,13 @@ void SetTextureData(Context context, Texture texture, uint mip, uint slice, cons
 
 void SetRenderTarget(Context context, SResourceDesc target, uint slot);
 void SetDepthTarget(Context context, SResourceDesc depth);
-void SetPassParams(Context context, RenderPassFlags flags);
 void SetClearColors(Context context, const float clear_color[4], const float clear_depth[2]);
 // Rendering
-RenderPass BeginRenderPass(Context context, const char* name);
+void BeginRenderPass(Context context, const char* name, bool clearColor = true, bool clearDepth = true);
 void EndRenderPass(Context context);
-void BeginRenderPass(Context context, const char* name, const RenderPass render_pass, const RenderSetup setup, const float* clear_color = nullptr, const float* clear_depth = nullptr);
+void BeginRenderPass(Context context, const char* name, const RenderPass render_pass, const RenderSetup setup);
 void EndRenderPass(Context context, const RenderSetup setup);
-
+RenderPass GetCurrentRenderPass(Context context);
 void TransitionRenderSetup(Context context, const RenderSetup setup, EResourceState state_before, EResourceState state_after);
 
 void SetRootSignature(Context context, const RootSignature root);
