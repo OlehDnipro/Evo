@@ -279,37 +279,64 @@ STextureSubresource* AcquireTextureSubresource(const SResourceDesc& resourceDesc
 	
 	assert(desc.slice >= 0 || desc.mip == -1);
 	uint index = (desc.slice + 1) + (desc.mip >= 0) *(texture->m_MipLevels*desc.slice + desc.mip);
-	STextureSubresource** ptr =	&texture->m_Subresources[index];
-	if (!(*ptr))
-	{
-		SRangeKey key;
 
+	bool isCube = texture->m_Type == TEX_CUBE || texture->m_Type == TEX_CUBE_ARRAY;
+
+	STextureSubresource*& subResource =	texture->m_Subresources[index];
+	if (!subResource)
+	{
+		uint ifCube6 = isCube ? 6 : 1;
+
+		SRangeKey key;
 		key.range.baseMipLevel = desc.mip >= 0 ? desc.mip : 0;
 		key.range.levelCount = desc.mip >= 0 ? 1 : texture->m_MipLevels;
-		key.range.baseArrayLayer = desc.slice >= 0 ? desc.slice : 0;
-		key.range.layerCount = desc.slice >= 0 ? 1 : texture->m_Slices;
+		key.range.baseArrayLayer = desc.slice >= 0 ? ifCube6 *desc.slice : 0;
+		key.range.layerCount = desc.slice >= 0 ? ifCube6 : ifCube6 *texture->m_Slices;
 		
 		auto it = texture->m_SubresourceDictionary->find(key.combo);
 		if (it == texture->m_SubresourceDictionary->end())
 		{
-			*ptr = new STextureSubresource;
-			(*ptr)->m_Owner = texture;
-			(*ptr)->m_Range.baseMipLevel = key.range.baseMipLevel;
-			(*ptr)->m_Range.levelCount = key.range.levelCount;
-			(*ptr)->m_Range.baseArrayLayer = key.range.baseArrayLayer;
-			(*ptr)->m_Range.layerCount = key.range.layerCount;
-			(*ptr)->m_Range.aspectMask = IsDepthFormat(texture->m_Format) ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT;
-			(*ptr)->m_Views = new TViewMap;	
-			(*ptr)->m_Faces = nullptr;
+			subResource = new STextureSubresource;
+			subResource->m_Owner = texture;
+			subResource->m_Range.baseMipLevel = key.range.baseMipLevel;
+			subResource->m_Range.levelCount = key.range.levelCount;
+			subResource->m_Range.baseArrayLayer = key.range.baseArrayLayer;
+			subResource->m_Range.layerCount = key.range.layerCount;
+			subResource->m_Range.aspectMask = IsDepthFormat(texture->m_Format) ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT;
+			subResource->m_Views = new TViewMap;
+			subResource->m_Faces = nullptr;
 			
-			texture->m_SubresourceDictionary->insert(TextureSubresourceDictionary::value_type(key.combo, *ptr));
+			texture->m_SubresourceDictionary->insert(TextureSubresourceDictionary::value_type(key.combo, subResource));
 		}
 		else
-			*ptr = it->second;
+			subResource = it->second;
 
 	}
+	if (isCube && desc.face >= 0)
+	{
+		assert(desc.face < 6);
+		if (!subResource->m_Faces)
+		{
+			subResource->m_Faces = new STextureSubresource * [6];
+			memset(subResource->m_Faces, 0, 6 * sizeof(STextureSubresource*));
+		}
+		STextureSubresource*& face = subResource->m_Faces[desc.face];
 
-	return *ptr;
+		if (!face)
+		{
+			face = new STextureSubresource;
+			face->m_Owner = texture;
+			face->m_Range.baseMipLevel = subResource->m_Range.baseMipLevel;
+			face->m_Range.levelCount = subResource->m_Range.levelCount;
+			face->m_Range.baseArrayLayer = subResource->m_Range.baseArrayLayer + desc.face;
+			face->m_Range.layerCount = 1;
+			face->m_Range.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+			face->m_Views = new TViewMap;
+			face->m_Faces = nullptr;
+		}
+		return face;
+	}
+	return subResource;
 }
 
 VkImageView AcquireTextureSubresourceView(Device device, const SResourceDesc& resourceDesc,  TexViewUsage usageType, TextureViewFlags flags = TextureViewFlags::ViewDefault)
@@ -1052,6 +1079,18 @@ Device CreateDevice(DeviceParams& params)
 
 	device->m_DefaultBlendState = CreateBlendState(device, BF_ONE, BF_ZERO, BM_ADD, 0xF, false);
 
+	STextureParams cube_params;
+	cube_params.m_Type = TextureType::TEX_CUBE_ARRAY;
+	cube_params.m_Width = 512;
+	cube_params.m_Height = 512;
+	cube_params.m_Format = IMGFMT_D16;
+	cube_params.m_MSAASampleCount = 1;
+	cube_params.m_DepthTarget = false;
+	cube_params.m_ShaderResource = true;
+	cube_params.m_Slices = 3;
+	Texture cubeTest = CreateTexture(device, cube_params);
+	VkImageView view = AcquireTextureSubresourceView(device, { cubeTest, { 2, -1, 3} }, TexViewUsage::SRV);
+
 	return device;
 }
 void DestroyRenderPass(Device device, RenderPass& render_pass);
@@ -1351,9 +1390,23 @@ Texture CreateTexture(Device device, const STextureParams& params)
 }
 void DestroyTextureSubresource(Device device, STextureSubresource* sub)
 {
-	for (auto& view : *sub->m_Views)
+	if (sub->m_Views)
 	{
-		vkDestroyImageView(device->m_Device, view.second, VK_NULL_HANDLE);			
+		for (auto& view : *sub->m_Views)
+		{
+			vkDestroyImageView(device->m_Device, view.second, VK_NULL_HANDLE);
+		}
+		delete sub->m_Views;
+	}
+	if (sub->m_Faces)
+	{
+		for (int face = 0; face < 0; face++)
+		{
+			if (sub->m_Faces[face])
+			{
+				DestroyTextureSubresource(device, sub->m_Faces[face]);
+			}
+		}
 	}
 }
 void DestroyTexture(Device device, Texture& texture)
@@ -1739,7 +1792,7 @@ RenderSetup CreateRenderSetup(Device device, RenderPass render_pass, Texture* co
 	{
 		fb.m_ColorTargets[i] = color_targets[i];
 	}
-	fb.m_DepthTarget = { depth_target, {depth_slice, -1, -1} };
+	fb.m_DepthTarget = { depth_target, {depth_slice} };
 	fb.m_ResolveTarget = resolve_target;
 	return CreateRenderSetup(device, render_pass, fb);
 }

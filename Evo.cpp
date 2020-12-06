@@ -202,7 +202,7 @@ public:
         Barrier(context, { { m_ShadowMap,  EResourceState::RS_RENDER_TARGET} });
 		for (int i = 0; i < SHADOW_MAP_CASCADE_COUNT; i++)
 		{
-			SetDepthTarget(context, { m_ShadowMap, {i, -1, -1} });
+			SetDepthTarget(context, { m_ShadowMap, {i} });
 			BeginRenderPass(context, "Shadow");
 			m_Shadows.SetPassParameters(context, ShadowMapCascade::ShadowPass, i);
 			m_Shadows.Draw(context);
