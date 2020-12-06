@@ -206,20 +206,35 @@ static const VkFormat g_AttribFormats[] =
 	VK_FORMAT_R32G32B32A32_UINT,
 };
 
-enum TexViewType
+enum TexViewUsage
 {
 	SRV,
 	UAV,
 	RTV,
 	DSV
 };
-
+enum TextureViewFlags :uint8
+{
+	ViewDefault = 0x0,
+	ForceArray = 0x1,
+	CubeAsArray = 0x2
+};
+struct SView
+{
+	VkImageViewType m_viewType;
+};
+union SViewKey
+{
+	SView view;
+	uint32 combo;
+};
+typedef std::map<uint32, VkImageView> TViewMap;
 struct STextureSubresource
 {
 	STexture* m_Owner;
 	STextureSubresource** m_Faces;//for cubemaps only 
+	TViewMap* m_Views;
 	VkImageSubresourceRange m_Range;
-	VkImageView m_ImageView;
 	EResourceState m_State;	
 };
 
@@ -249,8 +264,11 @@ struct STexture
 	VkDeviceMemory m_Memory;
 };
 
-STextureSubresource* AcquireSubresource(STexture* texture, const STextureSubresourceDesc& desc)
+STextureSubresource* AcquireTextureSubresource(const SResourceDesc& resourceDesc)
 {
+	assert(resourceDesc.m_Type == RESTYPE_TEXTURE);
+	const STextureSubresourceDesc& desc = resourceDesc.m_texRange;
+	Texture texture = (Texture)resourceDesc.m_Resource;
 	if (!texture->m_Subresources)
 	{
 		uint size = texture->m_Slices * (texture->m_MipLevels + 1) + 1;
@@ -258,7 +276,7 @@ STextureSubresource* AcquireSubresource(STexture* texture, const STextureSubreso
 		memset(texture->m_Subresources, 0, sizeof(STextureSubresource*) * size);
 		texture->m_SubresourceDictionary = new TextureSubresourceDictionary;
 	}
-
+	
 	assert(desc.slice >= 0 || desc.mip == -1);
 	uint index = (desc.slice + 1) + (desc.mip >= 0) *(texture->m_MipLevels*desc.slice + desc.mip);
 	STextureSubresource** ptr =	&texture->m_Subresources[index];
@@ -270,6 +288,7 @@ STextureSubresource* AcquireSubresource(STexture* texture, const STextureSubreso
 		key.range.levelCount = desc.mip >= 0 ? 1 : texture->m_MipLevels;
 		key.range.baseArrayLayer = desc.slice >= 0 ? desc.slice : 0;
 		key.range.layerCount = desc.slice >= 0 ? 1 : texture->m_Slices;
+		
 		auto it = texture->m_SubresourceDictionary->find(key.combo);
 		if (it == texture->m_SubresourceDictionary->end())
 		{
@@ -280,9 +299,9 @@ STextureSubresource* AcquireSubresource(STexture* texture, const STextureSubreso
 			(*ptr)->m_Range.baseArrayLayer = key.range.baseArrayLayer;
 			(*ptr)->m_Range.layerCount = key.range.layerCount;
 			(*ptr)->m_Range.aspectMask = IsDepthFormat(texture->m_Format) ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT;
-			(*ptr)->m_ImageView = VK_NULL_HANDLE;
+			(*ptr)->m_Views = new TViewMap;	
 			(*ptr)->m_Faces = nullptr;
-
+			
 			texture->m_SubresourceDictionary->insert(TextureSubresourceDictionary::value_type(key.combo, *ptr));
 		}
 		else
@@ -293,25 +312,72 @@ STextureSubresource* AcquireSubresource(STexture* texture, const STextureSubreso
 	return *ptr;
 }
 
-VkImageView AcquireSubresourceView(Device device, STextureSubresource* sub, TexViewType type, uint flags = 0)
+VkImageView AcquireTextureSubresourceView(Device device, const SResourceDesc& resourceDesc,  TexViewUsage usageType, TextureViewFlags flags = TextureViewFlags::ViewDefault)
 {
-	if (sub->m_ImageView)
-		return sub->m_ImageView;
+	assert(resourceDesc.m_Type == RESTYPE_TEXTURE);
+	const STextureSubresourceDesc& desc = resourceDesc.m_texRange;
+	Texture texture = (Texture)resourceDesc.m_Resource;
+
+	STextureSubresource* sub = AcquireTextureSubresource(resourceDesc);
+	TextureType type = sub->m_Owner->m_Type;
+	if (resourceDesc.m_texRange.slice >= 0)
+	{
+		bool arrayedType = type == TEX_1D_ARRAY || type == TEX_2D_ARRAY || type == TEX_CUBE_ARRAY;
+
+		if (arrayedType && (!(flags & TextureViewFlags::ForceArray)))
+		{
+			switch (type)
+			{
+			case TEX_1D_ARRAY:
+				type = TEX_1D;
+				break;
+			case TEX_2D_ARRAY:
+				type = TEX_2D;
+				break;
+			case TEX_CUBE_ARRAY:
+				type = TEX_CUBE;
+				break;
+			}
+		}
+	}
+
+	if (type == TEX_CUBE_ARRAY || type == TEX_CUBE)
+	{
+		if (resourceDesc.m_texRange.face >= 0)
+			type = TEX_2D;
+		else
+		{
+
+			if (flags & TextureViewFlags::CubeAsArray)
+			{
+				type = TEX_2D_ARRAY;
+			}
+		}
+	}
+	
+	VkImageViewType nativeType = g_TextureTypes[type];
+	SViewKey key; key.view = { nativeType };
+	TViewMap::iterator view = sub->m_Views->find(key.combo);
+	if (view != sub->m_Views->end())
+		return view->second;
 	else
 	{
+		sub->m_Views->insert(TViewMap::value_type(key.combo, VK_NULL_HANDLE));
+		view = sub->m_Views->find(key.combo);
+		/**/
 		//todo: add stencil support
 		//todo: add cubemap support
 		VkImageViewCreateInfo view_create_info = {};
 		view_create_info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
 		view_create_info.image = sub->m_Owner->m_Image;
-		view_create_info.viewType = g_TextureTypes[sub->m_Owner->m_Type];
+		view_create_info.viewType = nativeType;
 		view_create_info.format = g_Formats[sub->m_Owner->m_Format];
 		view_create_info.components = { VK_COMPONENT_SWIZZLE_R, VK_COMPONENT_SWIZZLE_G, VK_COMPONENT_SWIZZLE_B, VK_COMPONENT_SWIZZLE_A };
 		view_create_info.subresourceRange = sub->m_Range;
 
-		VkResult res = vkCreateImageView(device->m_Device, &view_create_info, VK_NULL_HANDLE, &sub->m_ImageView);
+		VkResult res = vkCreateImageView(device->m_Device, &view_create_info, VK_NULL_HANDLE, &view->second);
 		ASSERT(res == VK_SUCCESS);
-		return sub->m_ImageView;
+		return view->second;
 	}
 }
 
@@ -1285,10 +1351,9 @@ Texture CreateTexture(Device device, const STextureParams& params)
 }
 void DestroyTextureSubresource(Device device, STextureSubresource* sub)
 {
-	if (sub->m_ImageView)
+	for (auto& view : *sub->m_Views)
 	{
-		if(sub->m_ImageView)
-			vkDestroyImageView(device->m_Device, sub->m_ImageView, VK_NULL_HANDLE);			
+		vkDestroyImageView(device->m_Device, view.second, VK_NULL_HANDLE);			
 	}
 }
 void DestroyTexture(Device device, Texture& texture)
@@ -1337,13 +1402,11 @@ void UpdateResourceTable(Device device, RootSignature root, uint32 slot, Resourc
 		case RWTEXTURE:
 		{
 			ASSERT(resources[i].m_Type == RESTYPE_TEXTURE);
-
 			Texture texture = (Texture)resources[i].m_Resource;
-			STextureSubresource* subRes = AcquireSubresource(texture, resources[i].m_texRange);
 			descriptor_write.descriptorType = (item.m_Type == TEXTURE) ? VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE : VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
 			descriptor_write.pImageInfo = &image_info;
 			descriptor_write.pBufferInfo = VK_NULL_HANDLE;
-			image_info.imageView = AcquireSubresourceView(device, subRes, item.m_Type == RESTYPE_TEXTURE ? TexViewType::SRV : TexViewType::UAV);
+			image_info.imageView = AcquireTextureSubresourceView(device, resources[i], item.m_Type == RESTYPE_TEXTURE ? TexViewUsage::SRV : TexViewUsage::UAV);
 			image_info.imageLayout = (item.m_Type == TEXTURE) ? (IsDepthFormat(texture->m_Format)? VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL:VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL )
                                                                  : VK_IMAGE_LAYOUT_GENERAL;
 			break;
@@ -1689,8 +1752,7 @@ RenderSetup CreateRenderSetup(Device device, RenderPass render_pass, SFrameBuffe
 	{
 		if (color_target.m_Resource)
 		{
-			STextureSubresource* sub = AcquireSubresource((Texture)color_target.m_Resource, color_target.m_texRange);
-			VkImageView color_view = AcquireSubresourceView(device, sub, TexViewType::RTV);
+			VkImageView color_view = AcquireTextureSubresourceView(device, color_target, TexViewUsage::RTV);
 			ASSERT(color_view != VK_NULL_HANDLE);
 
 			attachments[attachment_count++] = color_view;
@@ -1698,8 +1760,7 @@ RenderSetup CreateRenderSetup(Device device, RenderPass render_pass, SFrameBuffe
 	}
 	if (fb.m_DepthTarget.m_Resource)
 	{
-		STextureSubresource* sub = AcquireSubresource((Texture)fb.m_DepthTarget.m_Resource, fb.m_DepthTarget.m_texRange);
-		VkImageView depth_view = AcquireSubresourceView(device, sub, TexViewType::DSV);
+		VkImageView depth_view = AcquireTextureSubresourceView(device, fb.m_DepthTarget, TexViewUsage::DSV);
 		ASSERT(depth_view != VK_NULL_HANDLE);
 
 		attachments[attachment_count++] = depth_view;
@@ -1707,8 +1768,7 @@ RenderSetup CreateRenderSetup(Device device, RenderPass render_pass, SFrameBuffe
 
 	if (fb.m_ResolveTarget.m_Resource)
 	{
-		STextureSubresource* sub = AcquireSubresource((Texture)fb.m_ResolveTarget.m_Resource, fb.m_ResolveTarget.m_texRange);
-		VkImageView resolve_view = AcquireSubresourceView(device, sub, TexViewType::RTV);
+		VkImageView resolve_view = AcquireTextureSubresourceView(device, fb.m_ResolveTarget, TexViewUsage::RTV);
 		ASSERT(resolve_view != VK_NULL_HANDLE);
 
 		attachments[attachment_count++] = resolve_view;
@@ -3056,9 +3116,9 @@ static VkImageLayout GetImageLayout(EResourceState state, bool depth)
 		return VK_IMAGE_LAYOUT_UNDEFINED;
 	};
 }
-EResourceState GetCurrentState(const SResourceDesc resource)
+EResourceState GetCurrentState(const SResourceDesc& resource)
 {
-	return resource.m_Type == RESTYPE_TEXTURE?AcquireSubresource((Texture)resource.m_Resource, resource.m_texRange)->m_State:((Buffer)resource.m_Resource)->m_State;
+	return resource.m_Type == RESTYPE_TEXTURE?AcquireTextureSubresource(resource)->m_State:((Buffer)resource.m_Resource)->m_State;
 }
 
 void Barrier(Context context, const SBarrierDesc* barriers, uint count)
@@ -3094,7 +3154,7 @@ void Barrier(Context context, const SBarrierDesc* barriers, uint count)
             img_barrier.image = texture->m_Image;
 
             image_count++;
-			AcquireSubresource(texture, barriers[i].m_Desc.m_texRange)->m_State = barriers[i].m_Transition;
+			AcquireTextureSubresource(barriers[i].m_Desc)->m_State = barriers[i].m_Transition;
         }
         else
         {
