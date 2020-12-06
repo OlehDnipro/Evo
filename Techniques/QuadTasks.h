@@ -39,9 +39,10 @@ class CPolygonTask : public CRenderTask
 public:
 	virtual bool CreateResources(Device device);
 	virtual void Draw(Context context);
-	void SetPassParameters(RenderPass pass);
 private:
 	Pipeline m_Pipeline;
+	void InitPipeline(Context context);
+
 };
 
 class CWaterDropTask : public CRenderTask
@@ -49,8 +50,8 @@ class CWaterDropTask : public CRenderTask
 public:
 	virtual bool CreateResources(Device device);
 	virtual void Draw(Context context);
-	void SetPassParameters(RenderPass pass);
 private:
+	void InitPipeline(Context context);
 	Pipeline m_Pipeline;
 	SamplerTable m_SamplerTable;
 };

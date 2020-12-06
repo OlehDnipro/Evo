@@ -89,11 +89,12 @@ bool CPolygonTask::CreateResources(Device device)
 
 void CPolygonTask::Draw(Context context)
 {
+	InitPipeline(context);
 	SetRootSignature(context, m_Cache.GetRootSignature());
 	SetPipeline(context, m_Pipeline);
 	m_Collection->Draw(context, m_Cache, 0);
 }
-void CPolygonTask::SetPassParameters(RenderPass pass)
+void CPolygonTask::InitPipeline(Context context)
 {
 	if (!m_Pipeline)
 	{
@@ -103,7 +104,7 @@ void CPolygonTask::SetPassParameters(RenderPass pass)
 		SPipelineParams p_params;
 		p_params.m_Name = "Polygon";
 		p_params.m_RootSignature = m_Cache.GetRootSignature();
-		p_params.m_RenderPass = pass;
+		p_params.m_RenderPass = GetCurrentRenderPass(context);
 	
 		p_params.m_VS = NPolygon::VS;
 		p_params.m_PS = NPolygon::PS;
@@ -138,12 +139,13 @@ bool CWaterDropTask::CreateResources(Device device)
 
 void CWaterDropTask::Draw(Context context)
 {
+	InitPipeline(context);
 	SetRootSignature(context, m_Cache.GetRootSignature());
 	SetPipeline(context, m_Pipeline);
 	SetGraphicsSamplerTable(context, NWaterdrop::Samplers, m_SamplerTable);
 	m_Collection->Draw(context, m_Cache, NWaterdrop::Resources);
 }
-void CWaterDropTask::SetPassParameters(RenderPass pass)
+void CWaterDropTask::InitPipeline(Context context)
 {
 	if (!m_Pipeline)
 	{
@@ -153,7 +155,7 @@ void CWaterDropTask::SetPassParameters(RenderPass pass)
 		SPipelineParams p_params;
 		p_params.m_Name = "WaterDrop";
 		p_params.m_RootSignature = m_Cache.GetRootSignature();
-		p_params.m_RenderPass = pass;
+		p_params.m_RenderPass = GetCurrentRenderPass(context);
 
 		p_params.m_VS = NWaterdrop::VS;
 		p_params.m_PS = NWaterdrop::PS;

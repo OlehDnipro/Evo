@@ -2498,7 +2498,7 @@ void SCommandList::Init(Device device)
 	desc_pool_create_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
 	desc_pool_create_info.poolSizeCount = elementsof(pool_sizes);
 	desc_pool_create_info.pPoolSizes = pool_sizes;
-	desc_pool_create_info.maxSets = 64;
+	desc_pool_create_info.maxSets = 1024;
 
 	res = vkCreateDescriptorPool(device->m_Device, &desc_pool_create_info, VK_NULL_HANDLE, &m_DescriptorPool);
 	ASSERT(res == VK_SUCCESS);

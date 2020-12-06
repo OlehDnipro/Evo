@@ -36,6 +36,7 @@
 #ifdef _DEBUG
 #include <crtdbg.h>
 #endif
+#include "Techniques/QuadTasks.h"
 
 #include <stdio.h>
 class CTreeFieldCollection : public IObjectCollection
@@ -106,8 +107,14 @@ class EvoApp : public DemoApp
 
 	ShadowMapCascade m_Shadows;
 	CTreeFieldCollection m_TreeField;
+	Texture m_RingDrop[2];
+	CTexturedQuadGeometry m_Quad;
+	CPolygonGeometry m_Poly;
+	CPolygonTask m_PolyTask;
+	CWaterDropTask m_DropTask;
+
 public:
-    EvoApp() :DemoApp()
+    EvoApp() :DemoApp(), m_Poly(8)
     {
         m_InitialUploadBufferSize = m_UploadBufferSize = 1024*1024*8;
     }
@@ -115,6 +122,12 @@ public:
 	{
 		CreateRenderSetups();
 		m_TreeField.Create(m_Device);
+		m_Poly.Create(m_Device);
+		m_Quad.Create(m_Device);
+		m_PolyTask.SetGeometry(&m_Poly);
+		m_DropTask.SetGeometry(&m_Quad);
+		m_PolyTask.CreateResources(m_Device);
+		m_DropTask.CreateResources(m_Device);
 		m_Shadows.SetShadowMap(m_ShadowMap);
 		m_Shadows.SetGeometry(&m_TreeField);
 		m_Shadows.CreateResources(m_Device);
@@ -142,6 +155,18 @@ public:
 
 		tb_params.m_Slices = SHADOW_MAP_CASCADE_COUNT;
 		m_ShadowMap = CreateTexture(m_Device, tb_params);
+
+		STextureParams drop_params;
+
+		drop_params.m_Type = TextureType::TEX_2D;
+		drop_params.m_Width = 512;
+		drop_params.m_Height = 512;
+		drop_params.m_Format = IMGFMT_RGBA8;
+		drop_params.m_MSAASampleCount = 1;
+		drop_params.m_RenderTarget = true;
+		drop_params.m_ShaderResource = true;
+		m_RingDrop[0] = CreateTexture(m_Device, drop_params);
+		m_RingDrop[1] = CreateTexture(m_Device, drop_params);
 
 	}
 	~EvoApp()	
@@ -195,10 +220,54 @@ public:
 
 	void DrawFrame(Context context, uint buffer_index)
 	{
-		float c[4] = { 0,0,0,0 };
-		float d[2] = { 1,0 };
-		SetClearColors(context, c, d);
-        static bool init = false;
+		float black[4] = { 0,0,0,0 };
+		float gray[4] = { 0.5, 0.5, 0.5, 0.5 };
+		float depthFar[2] = { 1,0 };
+
+		static int cur = 1;
+		static bool init = true;
+		if (!init)
+		{
+			for (int i = 0; i < 50; i++)
+			{
+				if (!init)
+				{
+					SetClearColors(context, gray, depthFar);
+					SetRenderTarget(context, { m_RingDrop[0] }, 0);
+					m_Poly.UpdatePos(0.025, float2(0, 0));
+
+					Barrier(context, { { m_RingDrop[0],  EResourceState::RS_RENDER_TARGET} });
+
+					BeginRenderPass(context, "Drop");
+					m_PolyTask.Draw(context);
+					EndRenderPass(context);
+
+					Barrier(context, { { m_RingDrop[0],  EResourceState::RS_SHADER_READ} });
+					
+					m_Quad.SetTexture(m_RingDrop[0]);
+					
+					SetClearColors(context, black, depthFar);
+
+					init = true;
+				}
+
+				SetRenderTarget(context, { m_RingDrop[cur] }, 0);
+
+				Barrier(context, { { m_RingDrop[cur], EResourceState::RS_RENDER_TARGET} });
+
+				BeginRenderPass(context, "Phys");
+				m_DropTask.Draw(context);
+				EndRenderPass(context);
+
+				Barrier(context, { { m_RingDrop[cur], EResourceState::RS_SHADER_READ} });
+				
+				m_Quad.SetTexture(m_RingDrop[cur]);
+
+				cur = 1 - cur;
+			}
+		}
+		SetClearColors(context, black, depthFar);
+
         Barrier(context, { { m_ShadowMap,  EResourceState::RS_RENDER_TARGET} });
 		for (int i = 0; i < SHADOW_MAP_CASCADE_COUNT; i++)
 		{
