@@ -1079,17 +1079,6 @@ Device CreateDevice(DeviceParams& params)
 
 	device->m_DefaultBlendState = CreateBlendState(device, BF_ONE, BF_ZERO, BM_ADD, 0xF, false);
 
-	STextureParams cube_params;
-	cube_params.m_Type = TextureType::TEX_CUBE_ARRAY;
-	cube_params.m_Width = 512;
-	cube_params.m_Height = 512;
-	cube_params.m_Format = IMGFMT_D16;
-	cube_params.m_MSAASampleCount = 1;
-	cube_params.m_DepthTarget = false;
-	cube_params.m_ShaderResource = true;
-	cube_params.m_Slices = 3;
-	Texture cubeTest = CreateTexture(device, cube_params);
-	VkImageView view = AcquireTextureSubresourceView(device, { cubeTest, { 2, -1, 3} }, TexViewUsage::SRV);
 
 	return device;
 }
