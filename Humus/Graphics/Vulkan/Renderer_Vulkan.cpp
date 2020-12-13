@@ -1314,14 +1314,14 @@ Device GetDevice(Context context)
 Texture CreateTexture(Device device, const STextureParams& params)
 {
 	VkImage image = VK_NULL_HANDLE;
-
+	uint ifCube6 = (params.m_Type == TEX_CUBE || params.m_Type == TEX_CUBE_ARRAY) ? 6 : 1;
 	VkImageCreateInfo image_create_info = {};
 	image_create_info.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
 	image_create_info.imageType = (params.m_Type <= TEX_1D_ARRAY)? VK_IMAGE_TYPE_1D : (params.m_Type <= TEX_CUBE_ARRAY)? VK_IMAGE_TYPE_2D : VK_IMAGE_TYPE_3D;
 	image_create_info.format = g_Formats[params.m_Format];
 	image_create_info.extent = { params.m_Width, params.m_Height, params.m_Depth };
 	image_create_info.mipLevels = params.m_MipCount;
-	image_create_info.arrayLayers = params.m_Slices;
+	image_create_info.arrayLayers = ifCube6*params.m_Slices;
 	image_create_info.samples = VkSampleCountFlagBits(params.m_MSAASampleCount);
 	image_create_info.tiling = VK_IMAGE_TILING_OPTIMAL;
 	//image_create_info.usage = (IsDepthFormat(params.m_Format)? VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT : VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT) | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
