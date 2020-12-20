@@ -1,0 +1,67 @@
+struct SWaterConst
+{
+	float4x4 mvp;
+	float3 camPos;  
+};
+
+struct VertexIn
+{
+	float3 pos    : Position;
+	float2 uv     : TexCoord;
+};
+
+struct PixelIn
+{
+	float4 pos     : SV_Position;
+	float2 uv      : TexCoord0;
+	float3 viewVec : TexCoord1;
+	float3 corrVec:  TexCoord2;
+
+};
+
+[Rootsig]
+ROOT_BEGIN
+	ST_BEGIN Samplers
+		SAMPLER		SamplerState ColorSampler;
+	ST_END
+
+	RT_BEGIN Resources
+		CBUFFER	SWaterConst WaterConst;
+		TEXTURE Texture2D   WaveTex;
+		TEXTURE TextureCube EnvTex;
+	RT_END		
+ROOT_END
+[Vertex: VS]
+
+void main(VertexIn vert, out PixelIn res) 
+{
+	res.uv = vert.uv;
+	res.pos = mul(WaterConst.mvp, float4(vert.pos, 1.0f));
+	res.viewVec = vert.pos - WaterConst.camPos;
+	float3 cubeCenter = float3(0,1,0);
+	res.corrVec = (vert.pos - cubeCenter) / 5;
+}
+
+[Pixel: PS]
+void main(PixelIn pix, out float4 outFragColor: SV_TARGET)
+{
+	const float4 waterColor = float4(0.3, 0.4, 1.0, 0.0);
+
+	float4 s = WaveTex.Sample(ColorSampler, pix.uv) - 0.5;
+	float sobelX = s.z;
+	float sobelY = s.w;
+
+	float3 normal = float3(sobelX, 0.04, sobelY);
+
+	normal  = normalize(normal);
+	float3 viewVec = normalize(pix.viewVec);
+
+	float3 reflVec = normalize(reflect(viewVec, normal) + pix.corrVec);
+	float4 refl = EnvTex.Sample(ColorSampler, reflVec) * 0.9;
+
+	float3 refrVec = normalize(refract(viewVec, normal, 0.85) + pix.corrVec);
+	float4 refr = EnvTex.Sample(ColorSampler, refrVec) * waterColor;
+
+	outFragColor = lerp(refl, refr, -dot(viewVec, normal));
+	outFragColor.a = 0.75;
+} 
