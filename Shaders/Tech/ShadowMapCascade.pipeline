@@ -35,6 +35,8 @@ struct PixelIn
 PERMUTATIONS_BEGIN
 	MUTE MainPass
 	MUTE ShadowPass SHADOWPASS
+	MUTE NoShadowPass NOSHADOW
+
 PERMUTATIONS_END
 
 [Rootsig]
@@ -93,6 +95,7 @@ void main(PixelIn pix, out float4 outFragColor: SV_TARGET)
 	float3 L = normalize(-ViewportConst.lightDir);
 	float3 H = normalize(L + pix.posV);
 	int cascade = 0;
+#ifndef NOSHADOW
 	for(int  i = 0; i < SHADOW_CASCADES_COUNT - 1; i++)
 	{
 		if(pix.posV.z > ShadowConst.cascadeSplits[i])
@@ -102,6 +105,9 @@ void main(PixelIn pix, out float4 outFragColor: SV_TARGET)
 	float4 shadowPos = mul(ShadowConst.lightViewProjection[cascade], float4(pix.posW, 1 ));
 	shadowPos /= shadowPos.w;
 	float diffuse = max(SamplePCF(shadowPos, cascade)*dot(N, L), ambient);
+#else
+	float diffuse = max(dot(N, L), ambient);
+#endif
 	float3 lightColor = float3(1.0f,1.0f,1.0f);
 	outFragColor.rgb = max(lightColor * (diffuse * color.rgb), float3(0.0f, 0.0f, 0.0f));
 	outFragColor.a = color.a;

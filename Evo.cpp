@@ -53,17 +53,17 @@ public:
 		m_Objects[0].Init(device, m_vertexLayout, "../../models/terrain_simple.dae", "../../Textures/gridlines.dds", 1.0f);
 		m_Objects[1].Init(device, m_vertexLayout, "../../models/oak_trunk.dae", "../../Textures/oak_bark.dds", 2.0f);
 		m_Objects[2].Init(device, m_vertexLayout, "../../models/oak_leafs.dae", "../../Textures/oak_leafs.dds", 2.0f);
-		m_ObjectInstances.resize(11);
+		m_ObjectInstances.resize(9);
 		m_ObjectInstances[0] = new SimpleObjectInstance(m_Objects[0], device, mtx);
 
 		const std::vector<vec3> positions = {
-		vec3(0.0f, 0.0f, 0.0f),
+//		vec3(0.0f, 0.0f, 0.0f),
 		vec3(1.25f, -0.25f, 1.25f),
 		vec3(-1.25f, 0.2f, 1.25f),
 		vec3(1.25f, -0.1f, -1.25f),
 		vec3(-1.25f, 0.25f, -1.25f),
 		};
-		for (int i = 1; i < 11; i++)
+		for (int i = 1; i < 9; i++)
 		{
 			mtx = translate(positions[(i - 1) / 2]);
 			if (i % 2 == 0)
@@ -108,11 +108,15 @@ class EvoApp : public DemoApp
 	ShadowMapCascade m_Shadows;
 	CTreeFieldCollection m_TreeField;
 	Texture m_RingDrop[2];
+	Texture m_CubeMap;
 	CTexturedQuadGeometry m_Quad;
+	CTexturedQuadGeometry m_WaterQuad;
+
 	CPolygonGeometry m_Poly;
 	CPolygonTask m_PolyTask;
 	CWaterDropTask m_DropTask;
-
+	CWaterTask m_WaterTask;
+	uint m_CurDropTex = 1;
 public:
     EvoApp() :DemoApp(), m_Poly(8)
     {
@@ -120,17 +124,24 @@ public:
     }
 	bool Init()
 	{
-		CreateRenderSetups();
 		m_TreeField.Create(m_Device);
 		m_Poly.Create(m_Device);
 		m_Quad.Create(m_Device);
+		m_WaterQuad.Create(m_Device, {  { {-10, 0.35,  10},   {0, 0} },
+										{ { 10, 0.35,  10},   {1, 0} },
+										{ { 10, 0.35, -10},   {1, 1} },
+										{ {-10, 0.35, -10},   {0, 1} }
+			});
 		m_PolyTask.SetGeometry(&m_Poly);
 		m_DropTask.SetGeometry(&m_Quad);
 		m_PolyTask.CreateResources(m_Device);
 		m_DropTask.CreateResources(m_Device);
-		m_Shadows.SetShadowMap(m_ShadowMap);
 		m_Shadows.SetGeometry(&m_TreeField);
 		m_Shadows.CreateResources(m_Device);
+		m_WaterTask.CreateResources(m_Device);
+		m_WaterTask.SetGeometry(&m_WaterQuad);
+		CreateRenderSetups();
+
 		return true;
 	}
 	void CreateRenderSetups()
@@ -167,6 +178,72 @@ public:
 		drop_params.m_ShaderResource = true;
 		m_RingDrop[0] = CreateTexture(m_Device, drop_params);
 		m_RingDrop[1] = CreateTexture(m_Device, drop_params);
+
+		STextureParams cube_params;
+
+		cube_params.m_Type = TextureType::TEX_CUBE;
+		cube_params.m_Width = 1024;
+		cube_params.m_Height = 1024;
+		cube_params.m_Format = IMGFMT_RGBA8;
+		cube_params.m_MSAASampleCount = 1;
+		cube_params.m_RenderTarget = true;
+		cube_params.m_ShaderResource = true;
+		m_CubeMap = CreateTexture(m_Device, cube_params);
+
+		float depthFar[2] = { 1,0 };
+		float gray[4] = { 0.5, 0.5, 0.5, 0.5 };
+		float black[4] = { 0,0,0,0 };
+		float blue[4] = { 0.3,0.5,0.7, 1 };
+
+		Context context = GetMainContext(m_Device);
+		
+		m_Shadows.SetShadowMap(m_ShadowMap);
+
+		m_Shadows.SetCubeProjection(true);
+		Barrier(context, { { m_CubeMap,  EResourceState::RS_RENDER_TARGET} });
+		vec3 eye(0, 1, 0);
+		for (int i = 0; i < 6; i++)
+		{
+			SetClearColors(context, blue, depthFar);
+			SetRenderTarget(context, { m_CubeMap, {-1, -1, i} }, 0);
+			vec3 target;
+			switch (i)
+			{
+			case 0:
+				target = vec3(1,1,0);//x+
+				break;
+			case 1:
+				target = vec3(-1, 1, 0);//x
+				break;
+			case 2:
+				target = vec3(0, 2, 0);//y+
+				break;
+			case 3:
+				target = vec3(0, 0, 0);//y-
+				break;
+			case 4:
+				target = vec3(0, 1, 1);//z+
+				break;
+			case 5:
+				target = vec3(0, 1, -1);//z-
+				break;
+			}
+			m_Shadows.SetCameraLookAt(eye, target, vec3(0, 1, 0));
+			BeginRenderPass(context, "CubeRender");
+			m_Shadows.SetPassParameters(context, ShadowMapCascade::PassEnum::NoShadow);
+			m_Shadows.Draw(context);
+			EndRenderPass(context);
+		}
+		Barrier(GetMainContext(m_Device), { { m_CubeMap,  EResourceState::RS_SHADER_READ} });
+
+		m_Shadows.SetCubeProjection(false);
+		ResetCamera();
+		UpdateCamera();
+
+		m_Poly.UpdatePos(0.025, float2(0, 0));
+
+		m_WaterTask.SetTextures(m_CubeMap, m_RingDrop[0]);
+		m_Shadows.SetCubeProjection(false);
 
 	}
 	~EvoApp()	
@@ -209,6 +286,7 @@ public:
 			m_CamPos += m_CamDir * delta;
 		
 		m_Shadows.SetCameraLookAt(m_CamPos, m_CamPos + m_CamDir, vec3(0,1,0));
+		m_WaterTask.SetCameraLookAt(m_CamPos, m_CamPos + m_CamDir, vec3(0, 1, 0));
 	}
 	virtual void ResetCamera()
 	{
@@ -220,53 +298,14 @@ public:
 
 	void DrawFrame(Context context, uint buffer_index)
 	{
-		float black[4] = { 0,0,0,0 };
-		float gray[4] = { 0.5, 0.5, 0.5, 0.5 };
+
+
+		static uint frame = 0;
+
 		float depthFar[2] = { 1,0 };
-
-		static int cur = 1;
-		static bool init = true;
-		if (!init)
-		{
-			for (int i = 0; i < 50; i++)
-			{
-				if (!init)
-				{
-					SetClearColors(context, gray, depthFar);
-					SetRenderTarget(context, { m_RingDrop[0] }, 0);
-					m_Poly.UpdatePos(0.025, float2(0, 0));
-
-					Barrier(context, { { m_RingDrop[0],  EResourceState::RS_RENDER_TARGET} });
-
-					BeginRenderPass(context, "Drop");
-					m_PolyTask.Draw(context);
-					EndRenderPass(context);
-
-					Barrier(context, { { m_RingDrop[0],  EResourceState::RS_SHADER_READ} });
-					
-					m_Quad.SetTexture(m_RingDrop[0]);
-					
-					SetClearColors(context, black, depthFar);
-
-					init = true;
-				}
-
-				SetRenderTarget(context, { m_RingDrop[cur] }, 0);
-
-				Barrier(context, { { m_RingDrop[cur], EResourceState::RS_RENDER_TARGET} });
-
-				BeginRenderPass(context, "Phys");
-				m_DropTask.Draw(context);
-				EndRenderPass(context);
-
-				Barrier(context, { { m_RingDrop[cur], EResourceState::RS_SHADER_READ} });
-				
-				m_Quad.SetTexture(m_RingDrop[cur]);
-
-				cur = 1 - cur;
-			}
-		}
-		SetClearColors(context, black, depthFar);
+		float gray[4] = { 0.5, 0.5, 0.5, 0.5 };
+		float black[4] = { 0,0,0,0 };
+		float blue[4] = { 0.3,0.5,0.7, 1 };
 
         Barrier(context, { { m_ShadowMap,  EResourceState::RS_RENDER_TARGET} });
 		for (int i = 0; i < SHADOW_MAP_CASCADE_COUNT; i++)
@@ -279,15 +318,56 @@ public:
 		}
         Barrier(context, { { m_ShadowMap,  EResourceState::RS_SHADER_READ} });
 
-        Texture bb = GetBackBuffer(GetDevice(), buffer_index);
+		if (m_CurDropTex == 1)
+		{
+			if (frame % 100 == 0)
+			{
+				SetClearColors(context, gray, depthFar);
+				SetRenderTarget(context, { m_RingDrop[0] }, 0);
+
+				Barrier(context, { { m_RingDrop[0],  EResourceState::RS_RENDER_TARGET} });
+
+				BeginRenderPass(context, "Drop");
+				m_PolyTask.Draw(context);
+				EndRenderPass(context);
+
+				Barrier(context, { { m_RingDrop[0],  EResourceState::RS_SHADER_READ} });
+
+				m_Quad.SetTexture(m_RingDrop[0]);
+				SetClearColors(context, blue, depthFar);
+
+			}
+		}
+
+		SetRenderTarget(context, { m_RingDrop[m_CurDropTex] }, 0);
+
+		Barrier(context, { { m_RingDrop[m_CurDropTex], EResourceState::RS_RENDER_TARGET} });
+
+		BeginRenderPass(context, "Phys");
+		m_DropTask.Draw(context);
+		EndRenderPass(context);
+
+		Barrier(context, { { m_RingDrop[m_CurDropTex], EResourceState::RS_SHADER_READ} });
+
+		m_Quad.SetTexture(m_RingDrop[m_CurDropTex]);
+
+		m_CurDropTex = 1 - m_CurDropTex;
+
+		Texture bb = GetBackBuffer(GetDevice(), buffer_index);
 		SetRenderTarget(context, bb, 0);
 		SetDepthTarget(context, m_DepthBuffer);
-        Barrier(context, { {bb , EResourceState::RS_RENDER_TARGET} });
-		BeginRenderPass(context, "Backbuffer");
+		Barrier(context, { {bb , EResourceState::RS_RENDER_TARGET} });
+		BeginRenderPass(context, "Main");
 		m_Shadows.SetPassParameters(context, ShadowMapCascade::MainPass);
 		m_Shadows.Draw(context);
 		EndRenderPass(context);
+
+		BeginRenderPass(context, "Water", false, false);
+		m_WaterTask.Draw(context);
+		EndRenderPass(context);
+		
         Barrier(context, { { bb , EResourceState::RS_PRESENT} });
+		frame++;
 	};
 };
 static DemoApp *app = nullptr; // Should come up with something prettier than this

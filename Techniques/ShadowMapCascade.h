@@ -58,6 +58,7 @@ public:
 	{
 		ShadowPass,
 		MainPass,
+		NoShadow,
 		Count
 	};
 	void SetShadowMap(Texture shadowMap){m_ShadowProvider.m_ShadowCascades = shadowMap;};
@@ -66,6 +67,7 @@ public:
 	void Draw(Context context);
 	void Update(Context context);
 	void SetCameraLookAt(vec3 eye, vec3 target,vec3 up);
+	void SetCubeProjection(bool cube);
 	Camera const& GetCamera() { return m_Camera; }
 private:
 

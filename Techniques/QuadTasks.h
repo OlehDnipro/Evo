@@ -1,4 +1,9 @@
 #include "RenderTask.h"
+struct QuadVertex
+{
+	float3 pos;
+	float2 uv;
+};
 
 class CTexturedQuadGeometry : public IGeometryCollection
 {
@@ -7,11 +12,12 @@ public:
 	void Draw(Context context, CShaderCache& cache, int resources_slot);
 	void DefineVertexFormat(vector<AttribDesc>& format);
 	PrimitiveType GetPrimType() { return PRIM_TRIANGLE_FAN; };
-	void SetTexture(Texture tex) { m_Texture = tex; };
+	void SetTexture(Texture tex, uint index = 0) { m_Texture = tex; m_TexDescIndex = index; };
 	void Create(Device device);
-
+	void Create(Device device, const QuadVertex (&vtx)[4]);
 private:
 	Texture m_Texture;
+	uint m_TexDescIndex;
 	Buffer m_VB;
 	VertexSetup m_VertexSetup;
 	Device m_Device;
@@ -54,4 +60,45 @@ private:
 	void InitPipeline(Context context);
 	Pipeline m_Pipeline;
 	SamplerTable m_SamplerTable;
+};
+
+
+
+struct SWaterConst
+{
+	static const char* GetName() { return "WaterConst"; }
+	float4x4 mvp;
+	float3 camPos;
+};
+
+class CWaterParameterProvider : public CParameterProviderBase<CWaterParameterProvider>
+{
+public:
+	CConstantParameter<SWaterConst> m_Const;
+	static void CreateParameterMap()
+	{
+		CWaterParameterProvider p;
+		m_Layout.AddParameter(SWaterConst::GetName(), (uint8_t*)p.m_Const.GetPtr() - (uint8_t*)&p.m_pBase);
+		m_Layout.AddParameter("WaveTex", (uint8_t*)&p.m_WaveTexture - (uint8_t*)&p.m_pBase);
+		m_Layout.AddParameter("EnvTex", (uint8_t*)&p.m_EnvTexture - (uint8_t*)&p.m_pBase);
+	}
+	SWaterConst& Get() { return m_Const.Get(); }
+	void PrepareConstantBuffer(Context context, SResourceDesc* param) { m_Const.PrepareBuffer(context); }
+	SResourceDesc m_WaveTexture;
+	SResourceDesc m_EnvTexture;
+};
+
+class CWaterTask : public CRenderTask
+{
+public:
+	virtual bool CreateResources(Device device);
+	virtual void Draw(Context context);
+	void SetCameraLookAt(vec3 eye, vec3 target, vec3 up);
+	void SetTextures(Texture env, Texture wave);
+private:
+	void InitPipeline(Context context);
+	Pipeline m_Pipeline;
+	SamplerTable m_SamplerTable;
+	BlendState m_BlendState;
+	CWaterParameterProvider m_WaterProvider;
 };

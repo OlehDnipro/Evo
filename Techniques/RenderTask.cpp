@@ -64,12 +64,12 @@ void CShaderCache::FindRootResource(ItemType type, uint slot, uint binding, uint
 	}
 }
 
-void CShaderCache::GatherParameters(const vector<SResourceDesc>& resources, uint slot)
+void CShaderCache::GatherParameters(const vector<SResourceDesc>& resources, uint slot, uint offset)
 {
 	assert(m_TableUpdates[slot].m_Descriptors.size() <= resources.size());
 	for (int i = 0; i < resources.size(); i++)
 	{
-		m_TableUpdates[slot].m_Descriptors[i] = resources[i];
+		m_TableUpdates[slot].m_Descriptors[i + offset] = resources[i];
 	}
 }
 
@@ -137,6 +137,7 @@ bool CShaderCache::CreateRootSignature(Device device, const SCodeBlob& code, TGe
 		return false;
 	m_getResourceName = getName;
 	IterateRootSignature(m_RootSig, &CShaderCache::FindRootResource, this);
+	return true;
 }
 
 void CShaderCache::UpdateResourceTable(Device device, uint32 slot, ResourceTable table)

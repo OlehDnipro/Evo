@@ -1,6 +1,6 @@
 struct VertexIn
 {
-	float2 pos    : Position;
+	float3 pos    : Position;
 	float2 uv     : TexCoord;
 };
 
@@ -25,7 +25,7 @@ ROOT_END
 void main(VertexIn vert, out PixelIn res) 
 {
 	res.uv = vert.uv;
-	res.pos = float4(vert.pos,0,1);
+	res.pos = float4(vert.pos,1);
 }
 
 [Pixel: PS]

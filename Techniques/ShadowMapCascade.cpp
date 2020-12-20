@@ -12,7 +12,8 @@ void ShadowMapCascade::SetCameraLookAt(vec3 eye, vec3 target, vec3 up)
 	CRenderTask::SetCameraLookAt(eye, target, up);
 	m_ViewportProvider.Get().view = m_Camera.GetViewTransform();
 	m_perFrame = m_ViewportProvider.Get();
-
+	if (m_currentPass == NoShadow)
+		return;
 	vec4 frustumView[] = {
 		{ -1,  1, 0, 1},
 		{  1,  1, 0, 1},
@@ -82,6 +83,21 @@ const char* GetResourceName(uint slot, uint binding)
 	return NShadowMapCascade::RootItemNames[slot][binding];
 }
 
+void ShadowMapCascade::SetCubeProjection(bool cube)
+{
+	if (!cube)
+	{
+		m_ViewportProvider.Get().projection = m_Camera.ProjectPerspective(PI / 4, 720.0f / 1280.0f, 0.5, 20);
+		m_currentPass = MainPass;
+
+	}
+	else
+	{
+		m_ViewportProvider.Get().projection = m_Camera.ProjectPerspective(PI / 2, 1, 0.25, 5);
+		m_currentPass = NoShadow;
+	}
+}
+
 bool ShadowMapCascade::CreateResources(Device device)
 {
 	m_Device = device;
@@ -91,7 +107,7 @@ bool ShadowMapCascade::CreateResources(Device device)
 	if ((m_SamplerTable = CreateSamplerTable(m_Device, m_Cache.GetRootSignature(), NShadowMapCascade::Samplers, samplers)) == nullptr) return false;
 
 	vec3 lightPos = { 6.18, 20, -19 };
-	m_ViewportProvider.Get().projection = m_Camera.ProjectPerspective(PI / 4, 720.0f / 1280.0f, 0.5, 20);
+	SetCubeProjection(false);
 	m_ViewportProvider.Get().lightDir = normalize(-lightPos);
 
 	return true;
@@ -123,8 +139,16 @@ void ShadowMapCascade::SetPassParameters(Context context, PassEnum passId, int c
 		}
 		else
 		{
-			p_params.m_VS =  NShadowMapCascade::VSShadowPass;
-			p_params.m_PS =  NShadowMapCascade::PSShadowPass;
+			if (passId == NoShadow)
+			{
+				p_params.m_VS = NShadowMapCascade::VSNoShadowPass;
+				p_params.m_PS = NShadowMapCascade::PSNoShadowPass;
+			}
+			else
+			{
+				p_params.m_VS = NShadowMapCascade::VSShadowPass;
+				p_params.m_PS = NShadowMapCascade::PSShadowPass;
+			}
 		}
 		p_params.m_Attribs = format.data();
 		p_params.m_AttribCount = format.size();

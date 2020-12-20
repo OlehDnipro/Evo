@@ -1,20 +1,22 @@
 #include "QuadTasks.h"
+#include "Shaders\Tech\Water.pipeline.h"
 #include "Shaders\Tech\Waterdrop.pipeline.h"
 #include "Shaders\Tech\Polygon.pipeline.h"
 
-struct QuadVertex
-{
-	float2 pos, uv;
-};
+CParameterProviderLayout CParameterProviderBase<CWaterParameterProvider>::m_Layout = CParameterProviderLayout(&CWaterParameterProvider::CreateParameterMap);
+
 void CTexturedQuadGeometry::DefineVertexFormat(vector<AttribDesc>& format)
 {
-	format.push_back({ 0, VF_FLOAT2, "Position" }); 
+	format.push_back({ 0, VF_FLOAT3, "Position" }); 
 	format.push_back({ 0, VF_FLOAT2, "TexCoord" });
 };
 
 void CTexturedQuadGeometry::Draw(Context context, CShaderCache& cache, int resources_slot)
 {
-	cache.GatherParameters({ m_Texture }, resources_slot);
+	if (m_Texture)
+	{
+		cache.GatherParameters({ m_Texture }, resources_slot, m_TexDescIndex);
+	}
 	ResourceTable rt = CreateResourceTable(GetDevice(context), cache.GetRootSignature(), resources_slot, nullptr, 0, context);
 
 	cache.UpdateResourceTable(GetDevice(context), resources_slot, rt);
@@ -29,6 +31,14 @@ void CTexturedQuadGeometry::Draw(Context context, CShaderCache& cache, int resou
 }
 void CTexturedQuadGeometry::Create(Device device)
 {
+	CTexturedQuadGeometry::Create(device, { { {-1,  1, 0},  {0, 0} },
+											{ { 1,  1, 0},  {1, 0} },
+											{ { 1, -1, 0},  {1, 1} },
+											{ {-1, -1, 0},  {0, 1} }
+										  });
+}
+void CTexturedQuadGeometry::Create(Device device,const QuadVertex (&vtx)[4])
+{
 	m_Device = device;
 	SBufferParams params = { 4 * sizeof(QuadVertex), HEAP_DEFAULT, Usage::VERTEX_BUFFER, "" };
 	m_VB = CreateBuffer(m_Device, params);
@@ -36,11 +46,9 @@ void CTexturedQuadGeometry::Create(Device device)
 	SMapBufferParams mapParam = { GetMainContext(device), m_VB, 0, 4 * sizeof(QuadVertex) };
 	QuadVertex* vertices = (QuadVertex*)MapBuffer(mapParam);
 	//PRIM_TRIANGLE_FAN
-	vertices[0] = { {-1,  1},  {0, 0} };
-	vertices[1] = { { 1,  1},  {1, 0} };
-	vertices[2] = { { 1, -1},  {1, 1} };
-	vertices[3] = { {-1, -1},  {0, 1} };
+	memcpy(vertices, &vtx[0], 4 * sizeof(QuadVertex));
 	UnmapBuffer(mapParam);
+	m_Texture = nullptr;
 }
 
 CTexturedQuadGeometry::~CTexturedQuadGeometry()
@@ -168,6 +176,80 @@ void CWaterDropTask::InitPipeline(Context context)
 		p_params.m_BlendState = GetDefaultBlendState(m_Device);
 		p_params.m_DepthTest = false;
 		p_params.m_DepthWrite = false;
+		m_Pipeline = CreatePipeline(m_Device, p_params);
+	}
+}
+const char* GetWaterResourceName(uint slot, uint binding)
+{
+	return NWater::RootItemNames[slot][binding];
+}
+
+bool CWaterTask::CreateResources(Device device)
+{
+	m_Device = device;
+
+	if (m_Cache.CreateRootSignature(m_Device, NWater::RootSig, GetWaterResourceName))
+	{
+		const SSamplerDesc samplers[] = { { FILTER_TRILINEAR, 1, AM_WRAP, AM_WRAP, AM_WRAP, ALWAYS } };
+		if ((m_SamplerTable = CreateSamplerTable(m_Device, m_Cache.GetRootSignature(), NWaterdrop::Samplers, samplers)) == nullptr)
+			return false;
+
+		m_Camera.ProjectPerspective(PI / 4, 720.0f / 1280.0f, 0.5, 20);
+		return true;
+	}
+	return false;
+}
+
+void CWaterTask::SetCameraLookAt(vec3 eye, vec3 target, vec3 up)
+{
+	CRenderTask::SetCameraLookAt(eye, target, up);
+	m_WaterProvider.Get().camPos = eye;
+	m_WaterProvider.Get().mvp = mul(m_Camera.GetProjection(), m_Camera.GetViewTransform());
+}
+
+void CWaterTask::SetTextures(Texture env, Texture wave)
+{
+	m_WaterProvider.m_EnvTexture = env;
+	m_WaterProvider.m_WaveTexture = wave;
+}
+
+void CWaterTask::Draw(Context context)
+{
+	InitPipeline(context);
+	SetRootSignature(context, m_Cache.GetRootSignature());
+	SetPipeline(context, m_Pipeline);
+	SetGraphicsSamplerTable(context, NWaterdrop::Samplers, m_SamplerTable);
+	vector<IParameterProvider*> providers = { &m_WaterProvider };
+	m_Cache.GatherParameters(context, providers.data(), 1);
+	m_Collection->Draw(context, m_Cache, NWaterdrop::Resources);
+}
+
+void CWaterTask::InitPipeline(Context context)
+{
+	if (!m_Pipeline)
+	{
+		vector<AttribDesc> format;
+		m_Collection->DefineVertexFormat(format);
+
+		SPipelineParams p_params;
+		p_params.m_Name = "Water";
+		p_params.m_RootSignature = m_Cache.GetRootSignature();
+		p_params.m_RenderPass = GetCurrentRenderPass(context);
+
+		p_params.m_VS = NWater::VS;
+		p_params.m_PS = NWater::PS;
+
+		p_params.m_Attribs = format.data();
+		p_params.m_AttribCount = format.size();
+
+		p_params.m_PrimitiveType = m_Collection->GetPrimType();
+		m_BlendState = CreateBlendState(m_Device, BF_SRC_ALPHA, BF_INV_SRC_ALPHA, BM_ADD, 0xF, false);
+
+		p_params.m_BlendState = m_BlendState;
+		p_params.m_DepthTest = true;
+		p_params.m_DepthWrite = true;
+		p_params.m_DepthFunc = EComparisonFunc::LESS;
+
 		m_Pipeline = CreatePipeline(m_Device, p_params);
 	}
 }
