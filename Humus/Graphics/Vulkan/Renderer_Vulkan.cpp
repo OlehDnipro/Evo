@@ -33,7 +33,6 @@
 #define USE_DEBUG_MARKERS
 #define USE_DEBUG_UTILS
 //#endif
-
 struct SlicedBuffer
 {
 	Buffer	m_Buffer;
@@ -71,6 +70,8 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL VulkanCallback(VkDebugUtilsMessageSeverity
 	VkDebugUtilsMessengerCallbackDataEXT const* callbackData,
 	void* userData)
 {
+    OutputDebugStringA(callbackData->pMessage);
+    OutputDebugStringA("\n\n");
 	return VK_FALSE;
 }
 
@@ -845,7 +846,7 @@ Device CreateDevice(DeviceParams& params)
 			&VulkanCallback,
 			nullptr
 		};
-///		VkResult hResult = m_fnCreateDebugUtilsMessengerEXT(instance, &debugUtilsMessangerCreateInfo, nullptr, &debugMessenger);
+		VkResult hResult = m_fnCreateDebugUtilsMessengerEXT(instance, &debugUtilsMessangerCreateInfo, nullptr, &debugMessenger);
 	}
 #endif
 	VkPhysicalDeviceFeatures2 enabled_features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2 };
