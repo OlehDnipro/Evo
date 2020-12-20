@@ -1329,9 +1329,9 @@ Texture CreateTexture(Device device, const STextureParams& params)
 
 	if (params.m_Type == TEX_CUBE || params.m_Type == TEX_CUBE_ARRAY)
 		image_create_info.flags |= VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT;
-	else if (params.m_Type == TEX_2D_ARRAY)
+	/*else if (params.m_Type == TEX_2D_ARRAY)
 		image_create_info.flags |= VK_IMAGE_CREATE_2D_ARRAY_COMPATIBLE_BIT;
-
+    */// investigate! seems to be used only on volume(3d) textures
 	if (params.m_ShaderResource)
 		image_create_info.usage |= VK_IMAGE_USAGE_SAMPLED_BIT;
 	if (params.m_RenderTarget)
@@ -1466,6 +1466,8 @@ void UpdateResourceTable(Device device, RootSignature root, uint32 slot, Resourc
 			descriptor_write.pBufferInfo = &buffer_info;
 
 			buffer_info.buffer = buffer->m_Buffer;
+            buffer_info.offset = resources[i].m_bufRange.offset;
+            buffer_info.range = resources[i].m_bufRange.size == 0 ? VK_WHOLE_SIZE : resources[i].m_bufRange.size;
 			break;
 		}
 		case CBV:
@@ -1480,7 +1482,7 @@ void UpdateResourceTable(Device device, RootSignature root, uint32 slot, Resourc
 
 			buffer_info.buffer = buffer->m_Buffer;
 			buffer_info.offset = resources[i].m_bufRange.offset;
-			buffer_info.range = resources[i].m_bufRange.size;
+			buffer_info.range = resources[i].m_bufRange.size == 0? VK_WHOLE_SIZE: resources[i].m_bufRange.size;
 			break;
 		}
 		default:
@@ -3181,7 +3183,8 @@ void Barrier(Context context, const SBarrierDesc* barriers, uint count)
         if (barriers[i].m_Desc.m_Type == RESTYPE_TEXTURE)
 		{
             const Texture texture = (Texture)barriers[i].m_Desc.m_Resource;
-
+            bool isCube = texture->m_Type == TEX_CUBE || texture->m_Type == TEX_CUBE_ARRAY;
+            uint ifCube6 = isCube ? 6 : 1;
             img_barrier.srcAccessMask = GetFlags(before);
             img_barrier.dstAccessMask = GetFlags(barriers[i].m_Transition);
 			bool isDepth = IsDepthFormat(texture->m_Format);
@@ -3192,7 +3195,7 @@ void Barrier(Context context, const SBarrierDesc* barriers, uint count)
             img_barrier.subresourceRange.baseMipLevel = 0;
             img_barrier.subresourceRange.levelCount = texture->m_MipLevels;
             img_barrier.subresourceRange.baseArrayLayer = 0;
-            img_barrier.subresourceRange.layerCount = texture->m_Slices;
+            img_barrier.subresourceRange.layerCount = ifCube6*texture->m_Slices;
 
             img_barrier.image = texture->m_Image;
 

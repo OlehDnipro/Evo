@@ -234,7 +234,7 @@ public:
 			m_Shadows.Draw(context);
 			EndRenderPass(context);
 		}
-		Barrier(GetMainContext(m_Device), { { m_CubeMap,  EResourceState::RS_SHADER_READ} });
+        Barrier(GetMainContext(m_Device), { { {m_CubeMap},  EResourceState::RS_SHADER_READ} });
 
 		m_Shadows.SetCubeProjection(false);
 		ResetCamera();
@@ -306,7 +306,7 @@ public:
 		float gray[4] = { 0.5, 0.5, 0.5, 0.5 };
 		float black[4] = { 0,0,0,0 };
 		float blue[4] = { 0.3,0.5,0.7, 1 };
-
+        SetRenderTarget(context, { (Texture)nullptr }, 0);
         Barrier(context, { { m_ShadowMap,  EResourceState::RS_RENDER_TARGET} });
 		for (int i = 0; i < SHADOW_MAP_CASCADE_COUNT; i++)
 		{
@@ -317,7 +317,7 @@ public:
 			EndRenderPass(context);
 		}
         Barrier(context, { { m_ShadowMap,  EResourceState::RS_SHADER_READ} });
-
+        SetDepthTarget(context, { (Texture)nullptr });
 		if (m_CurDropTex == 1)
 		{
 			if (frame % 100 == 0)
@@ -357,6 +357,8 @@ public:
 		SetRenderTarget(context, bb, 0);
 		SetDepthTarget(context, m_DepthBuffer);
 		Barrier(context, { {bb , EResourceState::RS_RENDER_TARGET} });
+        Barrier(context, { { m_DepthBuffer,  EResourceState::RS_RENDER_TARGET} });
+
 		BeginRenderPass(context, "Main");
 		m_Shadows.SetPassParameters(context, ShadowMapCascade::MainPass);
 		m_Shadows.Draw(context);
