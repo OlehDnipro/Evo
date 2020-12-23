@@ -127,10 +127,10 @@ public:
 		m_TreeField.Create(m_Device);
 		m_Poly.Create(m_Device);
 		m_Quad.Create(m_Device);
-		m_WaterQuad.Create(m_Device, {  { {-10, 0.35,  10},   {0, 0} },
-										{ { 10, 0.35,  10},   {1, 0} },
-										{ { 10, 0.35, -10},   {1, 1} },
-										{ {-10, 0.35, -10},   {0, 1} }
+		m_WaterQuad.Create(m_Device, {  { {-1.35, 0.35,  1.35},   {0, 0} },
+										{ { 1.35, 0.35,  1.35},   {1, 0} },
+										{ { 1.35, 0.35, -1.35},   {1, 1} },
+										{ {-1.35, 0.35, -1.35},   {0, 1} }
 			});
 		m_PolyTask.SetGeometry(&m_Poly);
 		m_DropTask.SetGeometry(&m_Quad);
@@ -210,25 +210,25 @@ public:
 			switch (i)
 			{
 			case 0:
-				target = vec3(1,1,0);//x+
+				target = eye + vec3(1,0,0);//x+
 				break;
 			case 1:
-				target = vec3(-1, 1, 0);//x
+				target = eye + vec3(-1, 0, 0);//x
 				break;
 			case 2:
-				target = vec3(0, 2, 0);//y+
+				target = eye + vec3(0, 1, 0);//y+
 				break;
 			case 3:
-				target = vec3(0, 0, 0);//y-
+				target = eye + vec3(0, -1, 0);//y-
 				break;
 			case 4:
-				target = vec3(0, 1, 1);//z+
+				target = eye + vec3(0, 0, 1);//z+
 				break;
 			case 5:
-				target = vec3(0, 1, -1);//z-
+				target = eye + vec3(0, 0, -1);//z-
 				break;
 			}
-			m_Shadows.SetCameraLookAt(eye, target, vec3(0, 1, 0));
+			m_Shadows.SetCameraLookAt(eye, target, i == 2 || i == 3 ? vec3(0, 0, -1) : vec3(0, 1, 0));
 			BeginRenderPass(context, "CubeRender");
 			m_Shadows.SetPassParameters(context, ShadowMapCascade::PassEnum::NoShadow);
 			m_Shadows.Draw(context);
@@ -290,7 +290,7 @@ public:
 	}
 	virtual void ResetCamera()
 	{
-		m_CamPos = float3(0, 1.14f, -2.25f);
+		m_CamPos = float3(0, 1, 0);
 
 		m_Jaw = 0;
 		m_Pitch = 0;
