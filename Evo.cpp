@@ -58,11 +58,16 @@ public:
 
 		const std::vector<vec3> positions = {
 //		vec3(0.0f, 0.0f, 0.0f),
-		vec3(1.25f, -0.25f, 1.25f),
-		vec3(-1.25f, 0.2f, 1.25f),
-		vec3(1.25f, -0.1f, -1.25f),
-		vec3(-1.25f, 0.25f, -1.25f),
+		vec3(3.75,  -0.2f, 4),
+		vec3(5.65, -0.3f, 1.75f),
+		vec3(3.75,  -0.12f, -0.75f),
+		vec3(2, -0.3f, 1.75f),
 		};
+		/*
+		{ { {2, -0.25, 4}, { 0, 0 } },
+		{ { 5.5, -0.25,  4},   {1, 0} },
+		{ { 5.5, -0.25, -0.5},   {1, 1} },
+		{ {2, -0.25, -0.5},   {0, 1} }*/
 		for (int i = 1; i < 9; i++)
 		{
 			mtx = translate(positions[(i - 1) / 2]);
@@ -127,10 +132,10 @@ public:
 		m_TreeField.Create(m_Device);
 		m_Poly.Create(m_Device);
 		m_Quad.Create(m_Device);
-		m_WaterQuad.Create(m_Device, {  { {-1.25, 0.35,  1.25},   {0, 0} },
-										{ { 1.25, 0.35,  1.25},   {1, 0} },
-										{ { 1.25, 0.35, -1.25},   {1, 1} },
-										{ {-1.25, 0.35, -1.25},   {0, 1} }
+		m_WaterQuad.Create(m_Device, {  { {2, -0.25,  4},   {0, 0} },
+										{ { 5.5, -0.25,  4},   {1, 0} },
+										{ { 5.5, -0.25, -0.5},   {1, 1} },
+										{ {2, -0.25, -0.5},   {0, 1} }
 			});
 		m_PolyTask.SetGeometry(&m_Poly);
 		m_DropTask.SetGeometry(&m_Quad);
@@ -199,7 +204,7 @@ public:
 		float gray[4] = { 0.5, 0.5, 0.5, 0.5 };
 		float black[4] = { 0,0,0,0 };
 		float blue[4] = { 0.3,0.5,0.7, 1 };
-		float blueMasked[4] = { 0.3,0.5,0.7, 0.01 };
+		float blueMasked[4] = { 0.3,0.5,0.7, 0 };
 
 		Context context = GetMainContext(m_Device);
 		
@@ -208,8 +213,7 @@ public:
 		m_Shadows.SetCubeProjection(true);
 		Barrier(context, { { m_CubeMap,  EResourceState::RS_RENDER_TARGET} });
 		Barrier(context, { { m_CubeDepth,  EResourceState::RS_RENDER_TARGET} });
-		
-		vec3 eye(0, 0.75, 0);
+		vec3 eye(3.25, 0.75, 1.75);
 		for (int k = 0; k < 2; k++)
 		{
 			if (k == 0)
@@ -313,7 +317,7 @@ public:
 	}
 	virtual void ResetCamera()
 	{
-		m_CamPos = float3(0, 1.14f, -2.25f);
+		m_CamPos = float3(2.5, 0.6f, -1.2);
 		m_Jaw = 0;
 		m_Pitch = 0;
 	}

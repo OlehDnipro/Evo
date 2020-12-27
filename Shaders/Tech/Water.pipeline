@@ -86,15 +86,16 @@ void main(PixelIn pix, out float4 outFragColor: SV_TARGET)
 
 	float3 reflVec = Parallax(pix.posW, normalize(reflect(viewVec, normal)), 0) ;
 	float4 refl = EnvTex.Sample(ColorSampler, float4(reflVec,0));
-	if(refl.a < 0.05)
+	if(refl.a < 0.0001)
 	{
 		reflVec = Parallax(pix.posW, normalize(reflect(viewVec, normal)),1);
 		refl = EnvTex.Sample(ColorSampler, float4(reflVec,1));
 	}
 	refl*=0.9;
+	
 	float3 refrVec = Parallax(pix.posW, normalize(refract(viewVec, normal, 0.85)),0);
 	float4 refr = EnvTex.Sample(ColorSampler, float4(refrVec,0)) * waterColor;
 
-	outFragColor = refl;
+	outFragColor = lerp(refl, refr, -dot(viewVec, normal));
 	outFragColor.a = 0.75;
 } 
