@@ -1,7 +1,18 @@
 struct SWaterConst
 {
 	float4x4 mvp;
-	float3 camPos;  
+	float3 camPos;
+	float pad1;
+	float3 boxMax;
+	float pad2;
+	float3 boxMin;
+	float pad3;
+	float3 cubeCenter;
+	float pad4;
+	float3 boxMaxFar;
+	float pad5;
+	float3 boxMinFar;
+	float pad6;
 };
 
 struct VertexIn
@@ -14,9 +25,7 @@ struct PixelIn
 {
 	float4 pos     : SV_Position;
 	float2 uv      : TexCoord0;
-	float3 viewVec : TexCoord1;
-	float3 corrVec:  TexCoord2;
-
+	float3 posW	   : Position0;	
 };
 
 [Rootsig]
@@ -28,7 +37,7 @@ ROOT_BEGIN
 	RT_BEGIN Resources
 		CBUFFER	SWaterConst WaterConst;
 		TEXTURE Texture2D   WaveTex;
-		TEXTURE TextureCube EnvTex;
+		TEXTURE TextureCubeArray EnvTex;
 	RT_END		
 ROOT_END
 [Vertex: VS]
@@ -37,12 +46,31 @@ void main(VertexIn vert, out PixelIn res)
 {
 	res.uv = vert.uv;
 	res.pos = mul(WaterConst.mvp, float4(vert.pos, 1.0f));
-	res.viewVec = vert.pos - WaterConst.camPos;
-	float3 cubeCenter = float3(0,1,0);
-	res.corrVec = (vert.pos - cubeCenter) / 5;
+	res.posW = vert.pos;
 }
 
 [Pixel: PS]
+float3 Parallax(float3 pos, float3 dir, uint is_far)
+{
+	//distances for the proxy cube planes per-component; divising is derived from similar triangles
+	float3 DistancesOne, DistancesTwo;
+	if(is_far)
+	{
+		DistancesOne = (WaterConst.boxMaxFar - pos)/dir;
+		DistancesTwo = (WaterConst.boxMinFar - pos)/dir;
+	}
+	else
+	{
+		DistancesOne = (WaterConst.boxMax - pos)/dir;
+		DistancesTwo = (WaterConst.boxMin - pos)/dir;
+	}
+	//remove "negative" distances which means intersection is not on positive ray direction
+	float3 DistancesDirFiltered = max(DistancesOne, DistancesTwo);
+	//now choose closest  intersection in proper direction
+	float distance = min(min(DistancesDirFiltered.x, DistancesDirFiltered.y), DistancesDirFiltered.z);
+	return (pos+distance*dir) - WaterConst.cubeCenter;
+} 
+
 void main(PixelIn pix, out float4 outFragColor: SV_TARGET)
 {
 	const float4 waterColor = float4(0.3, 0.4, 1.0, 0.0);
@@ -54,14 +82,19 @@ void main(PixelIn pix, out float4 outFragColor: SV_TARGET)
 	float3 normal = float3(sobelX, 0.04, sobelY);
 
 	normal  = normalize(normal);
-	float3 viewVec = normalize(pix.viewVec);
+	float3 viewVec = normalize(pix.posW - WaterConst.camPos);
 
-	float3 reflVec = normalize(reflect(viewVec, normal) + pix.corrVec);
-	float4 refl = EnvTex.Sample(ColorSampler, reflVec) * 0.9;
+	float3 reflVec = Parallax(pix.posW, normalize(reflect(viewVec, normal)), 0) ;
+	float4 refl = EnvTex.Sample(ColorSampler, float4(reflVec,0));
+	if(refl.a < 0.05)
+	{
+		reflVec = Parallax(pix.posW, normalize(reflect(viewVec, normal)),1);
+		refl = EnvTex.Sample(ColorSampler, float4(reflVec,1));
+	}
+	refl*=0.9;
+	float3 refrVec = Parallax(pix.posW, normalize(refract(viewVec, normal, 0.85)),0);
+	float4 refr = EnvTex.Sample(ColorSampler, float4(refrVec,0)) * waterColor;
 
-	float3 refrVec = normalize(refract(viewVec, normal, 0.85) + pix.corrVec);
-	float4 refr = EnvTex.Sample(ColorSampler, refrVec) * waterColor;
-
-	outFragColor = lerp(refl, refr, -dot(viewVec, normal));
+	outFragColor = refl;
 	outFragColor.a = 0.75;
 } 

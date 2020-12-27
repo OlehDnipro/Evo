@@ -133,8 +133,11 @@ class SimpleObject
 	Dae::Model m_Model;
 	Texture m_Texture;
 	friend class SimpleObjectInstance;
+	int m_Mark = 0;
 	public:
 	bool Init(Device device, VertexLayout layout, const char* model, const char* texture, float scale);
+	int GetMark() const{ return m_Mark; }
+	void SetMark(int mark) { m_Mark = mark; }
 	Texture GetTexture() { return m_Texture; }
 };
 class SimpleObjectInstance
@@ -144,6 +147,7 @@ class SimpleObjectInstance
 public:
 	SimpleObjectInstance(const SimpleObject& object, Device device, float4x4 mtx);
 	void Draw(Context context);
+	const SimpleObject& GetBase() { return m_Object; }
 	IParameterProvider* GetModelProvider() { return (IParameterProvider*)&m_Provider; };
 };
 
@@ -181,7 +185,7 @@ private:
 class IGeometryCollection
 {
 public:
-	virtual ~IGeometryCollection(){}
+	virtual ~IGeometryCollection() {};
 	virtual void Create(Device device) = 0;
 	virtual void Draw(Context context, CShaderCache& cache, int resources_slot) = 0;
 	virtual void DefineVertexFormat(vector<AttribDesc>& format) = 0;
@@ -194,9 +198,11 @@ protected:
 	std::vector<SimpleObject> m_Objects;
 	std::vector<SimpleObjectInstance*> m_ObjectInstances;
 	Dae::VertexLayout m_vertexLayout;
+	int m_FilteredMark = -1;
 public:
 	IObjectCollection() {};
 	virtual void Draw(Context context, CShaderCache& cache, int resources_slot);
+	void SetFilter(uint filter) { m_FilteredMark = filter; };
 	virtual ~IObjectCollection();
 };
 

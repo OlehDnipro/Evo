@@ -69,6 +69,17 @@ struct SWaterConst
 	static const char* GetName() { return "WaterConst"; }
 	float4x4 mvp;
 	float3 camPos;
+	float pad1;
+	float3 boxMax;
+	float pad2;
+	float3 boxMin;
+	float pad3;
+	float3 cubeCenter;
+	float pad4;
+	float3 boxMaxFar;
+	float pad5;
+	float3 boxMinFar;
+	float pad6;
 };
 
 class CWaterParameterProvider : public CParameterProviderBase<CWaterParameterProvider>

@@ -50,9 +50,9 @@ public:
 							VERTEX_COMPONENT_NORMAL });
 		float4x4 mtx; mtx.identity();
 		m_Objects.resize(3);
-		m_Objects[0].Init(device, m_vertexLayout, "../../models/terrain_simple.dae", "../../Textures/gridlines.dds", 1.0f);
-		m_Objects[1].Init(device, m_vertexLayout, "../../models/oak_trunk.dae", "../../Textures/oak_bark.dds", 2.0f);
-		m_Objects[2].Init(device, m_vertexLayout, "../../models/oak_leafs.dae", "../../Textures/oak_leafs.dds", 2.0f);
+		m_Objects[0].Init(device, m_vertexLayout, "../../models/terrain_simple.dae", "../../Textures/gridlines.dds", 1.0f); m_Objects[0].SetMark(1);
+		m_Objects[1].Init(device, m_vertexLayout, "../../models/oak_trunk.dae", "../../Textures/oak_bark.dds", 2.0f); m_Objects[1].SetMark(2);
+		m_Objects[2].Init(device, m_vertexLayout, "../../models/oak_leafs.dae", "../../Textures/oak_leafs.dds", 2.0f); m_Objects[2].SetMark(2);
 		m_ObjectInstances.resize(9);
 		m_ObjectInstances[0] = new SimpleObjectInstance(m_Objects[0], device, mtx);
 
@@ -103,7 +103,7 @@ public:
 class EvoApp : public DemoApp
 {
 	Texture m_ColorBuffer, m_ShadowMap;
-	Texture m_DepthBuffer;
+	Texture m_DepthBuffer, m_CubeDepth;
 
 	ShadowMapCascade m_Shadows;
 	CTreeFieldCollection m_TreeField;
@@ -127,10 +127,10 @@ public:
 		m_TreeField.Create(m_Device);
 		m_Poly.Create(m_Device);
 		m_Quad.Create(m_Device);
-		m_WaterQuad.Create(m_Device, {  { {-1.35, 0.35,  1.35},   {0, 0} },
-										{ { 1.35, 0.35,  1.35},   {1, 0} },
-										{ { 1.35, 0.35, -1.35},   {1, 1} },
-										{ {-1.35, 0.35, -1.35},   {0, 1} }
+		m_WaterQuad.Create(m_Device, {  { {-1.25, 0.35,  1.25},   {0, 0} },
+										{ { 1.25, 0.35,  1.25},   {1, 0} },
+										{ { 1.25, 0.35, -1.25},   {1, 1} },
+										{ {-1.25, 0.35, -1.25},   {0, 1} }
 			});
 		m_PolyTask.SetGeometry(&m_Poly);
 		m_DropTask.SetGeometry(&m_Quad);
@@ -154,6 +154,10 @@ public:
 		db_params.m_DepthTarget = true;
 		m_DepthBuffer = CreateTexture(m_Device, db_params);
 
+		db_params.m_Width = 1024;
+		db_params.m_Height = 1024;
+
+		m_CubeDepth = CreateTexture(m_Device, db_params);
 
 		STextureParams tb_params;
 		tb_params.m_Type = TextureType::TEX_2D_ARRAY;
@@ -181,19 +185,21 @@ public:
 
 		STextureParams cube_params;
 
-		cube_params.m_Type = TextureType::TEX_CUBE;
+		cube_params.m_Type = TextureType::TEX_CUBE_ARRAY;
 		cube_params.m_Width = 1024;
 		cube_params.m_Height = 1024;
 		cube_params.m_Format = IMGFMT_RGBA8;
 		cube_params.m_MSAASampleCount = 1;
 		cube_params.m_RenderTarget = true;
 		cube_params.m_ShaderResource = true;
+		cube_params.m_Slices = 2;
 		m_CubeMap = CreateTexture(m_Device, cube_params);
 
 		float depthFar[2] = { 1,0 };
 		float gray[4] = { 0.5, 0.5, 0.5, 0.5 };
 		float black[4] = { 0,0,0,0 };
 		float blue[4] = { 0.3,0.5,0.7, 1 };
+		float blueMasked[4] = { 0.3,0.5,0.7, 0.01 };
 
 		Context context = GetMainContext(m_Device);
 		
@@ -201,41 +207,58 @@ public:
 
 		m_Shadows.SetCubeProjection(true);
 		Barrier(context, { { m_CubeMap,  EResourceState::RS_RENDER_TARGET} });
-		vec3 eye(0, 1, 0);
-		for (int i = 0; i < 6; i++)
+		Barrier(context, { { m_CubeDepth,  EResourceState::RS_RENDER_TARGET} });
+		
+		vec3 eye(0, 0.75, 0);
+		for (int k = 0; k < 2; k++)
 		{
-			SetClearColors(context, blue, depthFar);
-			SetRenderTarget(context, { m_CubeMap, {-1, -1, i} }, 0);
-			vec3 target;
-			switch (i)
+			if (k == 0)
 			{
-			case 0:
-				target = eye + vec3(1,0,0);//x+
-				break;
-			case 1:
-				target = eye + vec3(-1, 0, 0);//x
-				break;
-			case 2:
-				target = eye + vec3(0, 1, 0);//y+
-				break;
-			case 3:
-				target = eye + vec3(0, -1, 0);//y-
-				break;
-			case 4:
-				target = eye + vec3(0, 0, 1);//z+
-				break;
-			case 5:
-				target = eye + vec3(0, 0, -1);//z-
-				break;
+				m_TreeField.SetFilter(1);
+				SetClearColors(context, blueMasked, depthFar);
+
 			}
-			m_Shadows.SetCameraLookAt(eye, target, i == 2 || i == 3 ? vec3(0, 0, -1) : vec3(0, 1, 0));
-			BeginRenderPass(context, "CubeRender");
-			m_Shadows.SetPassParameters(context, ShadowMapCascade::PassEnum::NoShadow);
-			m_Shadows.Draw(context);
-			EndRenderPass(context);
+			else
+			{
+				m_TreeField.SetFilter(2);
+				SetClearColors(context, blue, depthFar);
+			}
+			for (int i = 0; i < 6; i++)
+			{
+				SetRenderTarget(context, { m_CubeMap, {k, -1, i} }, 0);
+				SetDepthTarget(context, m_CubeDepth);
+
+				vec3 target;
+				switch (i)
+				{
+				case 0:
+					target = eye + vec3(1, 0, 0);//x+
+					break;
+				case 1:
+					target = eye + vec3(-1, 0, 0);//x
+					break;
+				case 2:
+					target = eye + vec3(0, 1, 0);//y+
+					break;
+				case 3:
+					target = eye + vec3(0, -1, 0);//y-
+					break;
+				case 4:
+					target = eye + vec3(0, 0, 1);//z+
+					break;
+				case 5:
+					target = eye + vec3(0, 0, -1);//z-
+					break;
+				}
+				m_Shadows.SetCameraLookAt(eye, target, i == 2 || i == 3 ? vec3(0, 0, -1) : vec3(0, 1, 0));
+				BeginRenderPass(context, "CubeRender");
+				m_Shadows.SetPassParameters(context, ShadowMapCascade::PassEnum::NoShadow);
+				m_Shadows.Draw(context);
+				EndRenderPass(context);
+			}
 		}
         Barrier(GetMainContext(m_Device), { { {m_CubeMap},  EResourceState::RS_SHADER_READ} });
-
+		m_TreeField.SetFilter(-1);
 		m_Shadows.SetCubeProjection(false);
 		ResetCamera();
 		UpdateCamera();
@@ -290,8 +313,7 @@ public:
 	}
 	virtual void ResetCamera()
 	{
-		m_CamPos = float3(0, 1, 0);
-
+		m_CamPos = float3(0, 1.14f, -2.25f);
 		m_Jaw = 0;
 		m_Pitch = 0;
 	}

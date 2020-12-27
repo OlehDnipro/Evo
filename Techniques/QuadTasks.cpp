@@ -204,6 +204,11 @@ void CWaterTask::SetCameraLookAt(vec3 eye, vec3 target, vec3 up)
 {
 	CRenderTask::SetCameraLookAt(eye, target, up);
 	m_WaterProvider.Get().camPos = eye;
+	m_WaterProvider.Get().cubeCenter = vec3(0,0.75,0);
+	m_WaterProvider.Get().boxMax = vec3(1.25, 1.65, 1.25);
+	m_WaterProvider.Get().boxMin = vec3(-1.25, 0.35, -1.25);
+	m_WaterProvider.Get().boxMaxFar = vec3(5, 1.65, 5);
+	m_WaterProvider.Get().boxMinFar = vec3(-5, 0.35, -5);
 	m_WaterProvider.Get().mvp = mul(m_Camera.GetProjection(), m_Camera.GetViewTransform());
 }
 

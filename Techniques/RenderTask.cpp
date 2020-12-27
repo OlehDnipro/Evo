@@ -110,6 +110,8 @@ void IObjectCollection::Draw(Context context, CShaderCache& cache,  int resource
 {
 	for (int i = 0; i < m_ObjectInstances.size(); i++)
 	{
+		if (m_ObjectInstances[i]->GetBase().GetMark() == m_FilteredMark)
+			continue;
 		IParameterProvider* prov = m_ObjectInstances[i]->GetModelProvider();
 		cache.GatherParameters(context, &prov, 1);
 		ResourceTable rt = CreateResourceTable(GetDevice(context), cache.GetRootSignature(), resources_slot, nullptr, 0, context);

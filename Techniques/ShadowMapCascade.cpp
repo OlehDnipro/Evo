@@ -93,7 +93,7 @@ void ShadowMapCascade::SetCubeProjection(bool cube)
 	}
 	else
 	{
-		m_ViewportProvider.Get().projection = m_Camera.ProjectPerspective(PI / 2, 1, 0.25, 5);
+		m_ViewportProvider.Get().projection = m_Camera.ProjectPerspective(PI / 2, 1, 0.25, 10);
 		m_currentPass = NoShadow;
 	}
 }
