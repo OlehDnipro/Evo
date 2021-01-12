@@ -5,6 +5,7 @@
 
 CParameterProviderLayout CParameterProviderBase<CViewportParameterProvider>::m_Layout = CParameterProviderLayout(&CViewportParameterProvider::CreateParameterMap);
 CParameterProviderLayout CParameterProviderBase<CShadowParameterProvider>::m_Layout = CParameterProviderLayout(&CShadowParameterProvider::CreateParameterMap);
+CParameterProviderLayout CParameterProviderBase<CReflectProvider>::m_Layout = CParameterProviderLayout(&CReflectProvider::CreateParameterMap);
 
 
 void ShadowMapCascade::SetCameraLookAt(vec3 eye, vec3 target, vec3 up)
@@ -72,6 +73,7 @@ void ShadowMapCascade::SetCameraLookAt(vec3 eye, vec3 target, vec3 up)
 		cam.lookat(light_eye, _center, vec3(0, 1, 0));
 		m_ShadowProvider.Get().lightViewProjection[casc] = mul(ProjectiveMatrix(2 * radius, 2 * radius, 0, 2 * radius), cam.GetViewTransform());
 	}
+
 	float4 vec(0, 0, m_ShadowProvider.Get().cascadePlanes[1], 1);
 	vec = mul(m_Camera.GetProjection(), vec);
 	vec /= vec.w;
@@ -96,6 +98,13 @@ void ShadowMapCascade::SetCubeProjection(bool cube)
 		m_ViewportProvider.Get().projection = m_Camera.ProjectPerspective(PI / 2, 1, 0.25, 20);
 		m_currentPass = NoShadow;
 	}
+}
+
+void ShadowMapCascade::SetPlanarReflectionParam(float4x4 mtx, float4 plane)
+{
+	m_ReflectProvider.Get().reflectMatrix = mtx;
+	m_ReflectProvider.Get().reflectMatrixTInv = transpose(inverse(mtx));
+	m_ReflectProvider.Get().plane = plane;
 }
 
 bool ShadowMapCascade::CreateResources(Device device)
@@ -146,8 +155,16 @@ void ShadowMapCascade::SetPassParameters(Context context, PassEnum passId, int c
 			}
 			else
 			{
-				p_params.m_VS = NShadowMapCascade::VSShadowPass;
-				p_params.m_PS = NShadowMapCascade::PSShadowPass;
+				if (passId == Reflection)
+				{
+					p_params.m_VS = NShadowMapCascade::VSReflection;
+					p_params.m_PS = NShadowMapCascade::PSReflection;
+				}
+				else
+				{
+					p_params.m_VS = NShadowMapCascade::VSShadowPass;
+					p_params.m_PS = NShadowMapCascade::PSShadowPass;
+				}
 			}
 		}
 		p_params.m_Attribs = format.data();
@@ -178,10 +195,11 @@ void ShadowMapCascade::Draw(Context context)
 	vector<IParameterProvider*> providers = { m_curCascade < 0 ? (IParameterProvider*)&m_ViewportProvider :
 															(IParameterProvider*)&m_ShadowViewportProvider[m_curCascade],
 															(IParameterProvider*)&m_ShadowProvider,
+															(IParameterProvider*)&m_ReflectProvider,
 															nullptr
 											};
 	SetGraphicsSamplerTable(context, NShadowMapCascade::Samplers, m_SamplerTable);
-	m_Cache.GatherParameters(context, providers.data(), 2);
+	m_Cache.GatherParameters(context, providers.data(), 3);
 	SetPipeline(context, m_Pipeline[m_currentPass]);
 	m_Collection->Draw(context, m_Cache, NShadowMapCascade::Resources);
 }

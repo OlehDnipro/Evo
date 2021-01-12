@@ -18,6 +18,12 @@ struct SShadow
 	float4x4 lightViewProjection[SHADOW_CASCADES_COUNT];
 	float4 cascadeSplits;
 };
+struct SReflect
+{
+	float4x4 reflectMatrix;
+	float4x4 reflectMatrixTInv;
+	float4 plane;
+};
 struct SPerModel
 {
 	float4x4 model;
@@ -30,12 +36,14 @@ struct PixelIn
 	float2 uv      : TexCoord;
 	float3 color   : Color;
 	float3 normal  : Normal;
+	float clipDist : SV_ClipDistance0;
 };
 [Permutations]
 PERMUTATIONS_BEGIN
 	MUTE MainPass
 	MUTE ShadowPass SHADOWPASS
 	MUTE NoShadowPass NOSHADOW
+	MUTE Reflection NOSHADOW REFLECTION
 
 PERMUTATIONS_END
 
@@ -48,6 +56,7 @@ ROOT_BEGIN
 	RT_BEGIN Resources
 		CBUFFER SPerFrame ViewportConst;		
 		CBUFFER SShadow ShadowConst;	
+		CBUFFER SReflect ReflectConst;	
 		TEXTURE Texture2DArray ShadowMapCascades;
 		CBUFFER SPerModel ModelConst;
 		TEXTURE Texture2D ModelTexture;
@@ -58,11 +67,21 @@ ROOT_END
 void main(VertexIn vert, out PixelIn res) 
 {
 	res.color = vert.color;
-	res.normal = vert.normal;
 	res.uv = vert.uv;
 	res.posW = mul(ModelConst.model, float4(vert.pos, 1.0f)).xyz;
+	#ifdef REFLECTION
+		res.posW = mul(ReflectConst.reflectMatrix, float4(res.posW, 1.0f)).xyz;
+		res.normal = mul(ReflectConst.reflectMatrixTInv, float4(vert.normal,0)).xyz;
+	#else
+		res.normal = vert.normal;
+	#endif
 	res.posV = mul(ViewportConst.view, float4(res.posW, 1.0f)).xyz;
 	res.posH = mul(ViewportConst.projection, float4(res.posV, 1.0f));
+	#ifdef REFLECTION
+		res.clipDist = -dot(ReflectConst.plane, float4(res.posW, 1.0f));
+	#else
+		res.clipDist = 1;
+	#endif
 }
 
 [Pixel: PS]
@@ -92,7 +111,11 @@ void main(PixelIn pix, out float4 outFragColor: SV_TARGET)
 #ifndef SHADOWPASS
 	// Directional light
 	float3 N = normalize(pix.normal);
-	float3 L = normalize(-ViewportConst.lightDir);
+	#ifdef REFLECTION
+		float3 L = normalize(-1*mul(ReflectConst.reflectMatrix,float4(ViewportConst.lightDir,0)).xyz);
+	#else
+		float3 L = normalize(-ViewportConst.lightDir);
+	#endif
 	float3 H = normalize(L + pix.posV);
 	int cascade = 0;
 #ifndef NOSHADOW

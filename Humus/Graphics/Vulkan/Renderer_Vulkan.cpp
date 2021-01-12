@@ -852,6 +852,7 @@ Device CreateDevice(DeviceParams& params)
 	VkPhysicalDeviceFeatures2 enabled_features = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2 };
 	enabled_features.features.samplerAnisotropy = VK_TRUE;
 	enabled_features.features.textureCompressionBC = VK_TRUE;
+	enabled_features.features.shaderClipDistance = VK_TRUE;
 	//enabled_features.features.shaderInt64 = features.shaderInt64;
 
 	// Used to chain up features to pass to vkCreateDevice()

@@ -2,13 +2,13 @@ struct SWaterConst
 {
 	float4x4 mvp;
 	float3 camPos;
-	float pad1;
+	float streamOffset;
 	float3 boxMax;
 	float pad2;
 	float3 boxMin;
 	float pad3;
 	float3 cubeCenter;
-	float pad4;
+	float waveOffsetScale;
 	float3 boxMaxFar;
 	float pad5;
 	float3 boxMinFar;
@@ -25,6 +25,8 @@ struct PixelIn
 {
 	float4 pos     : SV_Position;
 	float2 uv      : TexCoord0;
+	float2 waveUV  : TexCoord1;
+
 	float3 posW	   : Position0;	
 };
 
@@ -37,6 +39,8 @@ ROOT_BEGIN
 	RT_BEGIN Resources
 		CBUFFER	SWaterConst WaterConst;
 		TEXTURE Texture2D   WaveTex;
+		TEXTURE Texture2D   PlanarReflection;
+		TEXTURE Texture2D   WaterNormalTile;
 		TEXTURE TextureCubeArray EnvTex;
 	RT_END		
 ROOT_END
@@ -45,6 +49,7 @@ ROOT_END
 void main(VertexIn vert, out PixelIn res) 
 {
 	res.uv = vert.uv;
+	res.waveUV = res.uv*10;
 	res.pos = mul(WaterConst.mvp, float4(vert.pos, 1.0f));
 	res.posW = vert.pos;
 }
@@ -84,18 +89,45 @@ void main(PixelIn pix, out float4 outFragColor: SV_TARGET)
 	normal  = normalize(normal);
 	float3 viewVec = normalize(pix.posW - WaterConst.camPos);
 
-	float3 reflVec = Parallax(pix.posW, normalize(reflect(viewVec, normal)), 0) ;
-	float4 refl = EnvTex.Sample(ColorSampler, float4(reflVec,0));
-	if(refl.a < 0.0001)
-	{
-		reflVec = Parallax(pix.posW, normalize(reflect(viewVec, normal)),1);
-		refl = EnvTex.Sample(ColorSampler, float4(reflVec,1));
-	}
-	refl*=0.9;
+
+	float w, h;
+	PlanarReflection.GetDimensions(w,h);
+	float2 refl_uv = pix.pos.xy;
+	
 	
 	float3 refrVec = Parallax(pix.posW, normalize(refract(viewVec, normal, 0.85)),0);
 	float4 refr = EnvTex.Sample(ColorSampler, float4(refrVec,0)) * waterColor;
 
-	outFragColor = lerp(refl, refr, -dot(viewVec, normal));
+	if(abs(dot(normal, float3(0,1,0))) < 0.995)
+	{
+		float3 reflVec = Parallax(pix.posW, normalize(reflect(viewVec, normal)), 0) ;
+		float4 refl = EnvTex.Sample(ColorSampler, float4(reflVec,0));
+		if(refl.a < 0.0001)
+		{
+			reflVec = Parallax(pix.posW, normalize(reflect(viewVec, normal)),1);
+			refl = EnvTex.Sample(ColorSampler, float4(reflVec,1));
+		}
+		refl*=0.9;
+		outFragColor = lerp(refl, refr, -dot(viewVec, normal));
+	}
+	else
+	{	
+
+		float3 lightPos = float3(6.18, 20, -19 );
+		float3 lightDir = normalize(-lightPos);
+
+		float4 wave = WaterNormalTile.Sample(ColorSampler, pix.waveUV + WaterConst.streamOffset);
+		float3 waveNormal = normalize(wave.xyz * 2 - 1);
+		refl_uv = refl_uv + waveNormal.xy*WaterConst.waveOffsetScale; 
+		refl_uv.x = refl_uv.x / w;
+		refl_uv.y = refl_uv.y / h;		
+		float4 prefl = PlanarReflection.Sample(ColorSampler, refl_uv);
+		outFragColor = lerp(prefl, refr, -dot(viewVec, normal));
+		
+		float spec = dot(reflect(-lightDir, float3(waveNormal.x, 1, waveNormal.y)), viewVec);
+		
+		spec = pow(spec > 0 ? spec : 0, 16);
+		outFragColor += float4(0.5,0.5,0.5,0.5)*spec;
+	}
 	outFragColor.a = 0.75;
 } 

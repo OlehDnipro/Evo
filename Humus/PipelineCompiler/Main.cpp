@@ -1224,6 +1224,7 @@ bool CompileShader(FILE* file, const char* path,const char* external_compiler, c
 		{
 			shader += "#define ";
 			shader += perm_def;
+			shader += "\n";
 		}
 		shader += "\n";
 		shader += "#define ";

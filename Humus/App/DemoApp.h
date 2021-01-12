@@ -66,7 +66,7 @@ public:
 	void Destroy();
 
 	void Start();
-	void Update();
+	virtual void Update();
 	void Close();
 
 	virtual void ResetCamera();

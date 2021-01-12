@@ -114,6 +114,8 @@ class EvoApp : public DemoApp
 	CTreeFieldCollection m_TreeField;
 	Texture m_RingDrop[2];
 	Texture m_CubeMap;
+	Texture m_Reflection;
+	Texture m_NormalTile;
 	CTexturedQuadGeometry m_Quad;
 	CTexturedQuadGeometry m_WaterQuad;
 
@@ -123,16 +125,16 @@ class EvoApp : public DemoApp
 	CWaterTask m_WaterTask;
 	uint m_CurDropTex = 1;
 public:
-    EvoApp() :DemoApp(), m_Poly(8)
-    {
-        m_InitialUploadBufferSize = m_UploadBufferSize = 1024*1024*8;
-    }
+	EvoApp() :DemoApp(), m_Poly(8)
+	{
+		m_InitialUploadBufferSize = m_UploadBufferSize = 1024 * 1024 * 8;
+	}
 	bool Init()
 	{
 		m_TreeField.Create(m_Device);
 		m_Poly.Create(m_Device);
 		m_Quad.Create(m_Device);
-		m_WaterQuad.Create(m_Device, {  { {2, -0.25,  4},   {0, 0} },
+		m_WaterQuad.Create(m_Device, { { {2, -0.25,  4},   {0, 0} },
 										{ { 5.5, -0.25,  4},   {1, 0} },
 										{ { 5.5, -0.25, -0.5},   {1, 1} },
 										{ {2, -0.25, -0.5},   {0, 1} }
@@ -158,6 +160,14 @@ public:
 		db_params.m_MSAASampleCount = 1;
 		db_params.m_DepthTarget = true;
 		m_DepthBuffer = CreateTexture(m_Device, db_params);
+
+		STextureParams refl_params;
+		refl_params.m_Width = m_DeviceParams.m_Width;
+		refl_params.m_Height = m_DeviceParams.m_Height;
+		refl_params.m_Format = IMGFMT_RGBA8;
+		refl_params.m_MSAASampleCount = 1;
+
+		m_Reflection = CreateTexture(m_Device, refl_params);
 
 		db_params.m_Width = 1024;
 		db_params.m_Height = 1024;
@@ -199,7 +209,7 @@ public:
 		cube_params.m_ShaderResource = true;
 		cube_params.m_Slices = 2;
 		m_CubeMap = CreateTexture(m_Device, cube_params);
-
+		m_NormalTile = CreateTexture(m_Device, "../../Textures/water.dds", 1);
 		float depthFar[2] = { 1,0 };
 		float gray[4] = { 0.5, 0.5, 0.5, 0.5 };
 		float black[4] = { 0,0,0,0 };
@@ -207,9 +217,9 @@ public:
 		float blueMasked[4] = { 0.3,0.5,0.7, 0 };
 
 		Context context = GetMainContext(m_Device);
-		
-		m_Shadows.SetShadowMap(m_ShadowMap);
 
+		m_Shadows.SetShadowMap(m_ShadowMap);
+		m_Shadows.SetPlanarReflectionParam(ReflectionMatrix(float3(3.75, -0.25, 1.75), float3(0, 1, 0)), float4(0, 1, 0, 0.25));
 		m_Shadows.SetCubeProjection(true);
 		Barrier(context, { { m_CubeMap,  EResourceState::RS_RENDER_TARGET} });
 		Barrier(context, { { m_CubeDepth,  EResourceState::RS_RENDER_TARGET} });
@@ -261,7 +271,7 @@ public:
 				EndRenderPass(context);
 			}
 		}
-        Barrier(GetMainContext(m_Device), { { {m_CubeMap},  EResourceState::RS_SHADER_READ} });
+		Barrier(GetMainContext(m_Device), { { {m_CubeMap},  EResourceState::RS_SHADER_READ} });
 		m_TreeField.SetFilter(-1);
 		m_Shadows.SetCubeProjection(false);
 		ResetCamera();
@@ -269,15 +279,20 @@ public:
 
 		m_Poly.UpdatePos(0.025, float2(0, 0));
 
-		m_WaterTask.SetTextures(m_CubeMap, m_RingDrop[0]);
+		m_WaterTask.SetTextures(m_CubeMap, m_RingDrop[0], m_Reflection, m_NormalTile);
 		m_Shadows.SetCubeProjection(false);
 
 	}
-	~EvoApp()	
+	~EvoApp()
 	{
 		DestroyTexture(m_Device, m_DepthBuffer);
 		DestroyTexture(m_Device, m_ShadowMap);
 
+	}
+	void Update()
+	{
+		DemoApp::Update();
+		m_WaterTask.Update();
 	}
 
 	void UpdateCamera()
@@ -378,6 +393,15 @@ public:
 		m_Quad.SetTexture(m_RingDrop[m_CurDropTex]);
 
 		m_CurDropTex = 1 - m_CurDropTex;
+		
+		SetRenderTarget(context, m_Reflection, 0);
+		SetDepthTarget(context, m_DepthBuffer);
+		Barrier(context, { {m_Reflection , EResourceState::RS_RENDER_TARGET} });
+		BeginRenderPass(context, "Reflection");
+		m_Shadows.SetPassParameters(context, ShadowMapCascade::Reflection);
+		m_Shadows.Draw(context);
+		EndRenderPass(context);
+		Barrier(context, { { m_Reflection , EResourceState::RS_SHADER_READ} });
 
 		Texture bb = GetBackBuffer(GetDevice(), buffer_index);
 		SetRenderTarget(context, bb, 0);

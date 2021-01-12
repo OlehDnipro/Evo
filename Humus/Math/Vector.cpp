@@ -1285,6 +1285,15 @@ float4x4 ProjectiveMatrix(const float w, const float h, const float z_near, cons
 		0, 0, 1 / (z_far - z_near), z_near / (z_near - z_far),
 		0, 0, 0, 1);
 }
+float4x4 ReflectionMatrix(float3 p, float3 n)
+{
+	float d = dot(p,n);
+	return float4x4(1 - 2*n.x*n.x,  -2*n.x*n.y,        -2*n.x*n.z,        2 * d * n.x,
+					-2 * n.x * n.y, 1 - 2 * n.y * n.y, -2 * n.y * n.z,    2 * d * n.y,
+					-2 * n.x * n.z, -2 * n.y *n.z,     1 - 2 * n.z * n.z, 2 * d * n.z,
+					0, 0, 0, 1);
+		
+}
 
 float4x4 PerspectiveMatrix(const float fov, const float ratio, const float z_near, const float z_far)
 {

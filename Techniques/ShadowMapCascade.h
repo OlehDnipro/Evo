@@ -19,7 +19,13 @@ struct SShadow
 	float4x4 lightViewProjection[SHADOW_MAP_CASCADE_COUNT];
 	float4 cascadePlanes;
 };
-
+struct SReflect
+{
+	static const char* GetName() { return "ReflectConst"; }
+	float4x4 reflectMatrix;
+	float4x4 reflectMatrixTInv;
+	float4 plane;
+};
 
 class CViewportParameterProvider : public CParameterProviderBase<CViewportParameterProvider>
 {
@@ -33,6 +39,20 @@ public:
 	SPerFrame& Get() { return m_Const.Get(); }
 	void PrepareConstantBuffer(Context context, SResourceDesc* param) { m_Const.PrepareBuffer(context); }
 };
+
+class CReflectProvider : public CParameterProviderBase<CReflectProvider>
+{
+public:
+	CConstantParameter<SReflect> m_Const;
+	static void CreateParameterMap()
+	{
+		CReflectProvider p;
+		m_Layout.AddParameter(SReflect::GetName(), (uint8_t*)p.m_Const.GetPtr() - (uint8_t*)&p.m_pBase);
+	}
+	SReflect& Get() { return m_Const.Get(); }
+	void PrepareConstantBuffer(Context context, SResourceDesc* param) { m_Const.PrepareBuffer(context); }
+};
+
 
 class CShadowParameterProvider: public CParameterProviderBase<CShadowParameterProvider>
 {
@@ -59,6 +79,7 @@ public:
 		ShadowPass,
 		MainPass,
 		NoShadow,
+		Reflection,
 		Count
 	};
 	void SetShadowMap(Texture shadowMap){m_ShadowProvider.m_ShadowCascades = shadowMap;};
@@ -68,6 +89,7 @@ public:
 	void Update(Context context);
 	void SetCameraLookAt(vec3 eye, vec3 target,vec3 up);
 	void SetCubeProjection(bool cube);
+	void SetPlanarReflectionParam(float4x4 mtx, float4 plane);
 	Camera const& GetCamera() { return m_Camera; }
 private:
 
@@ -79,7 +101,7 @@ private:
 	CViewportParameterProvider m_ShadowViewportProvider[SHADOW_MAP_CASCADE_COUNT];
 
 	CShadowParameterProvider m_ShadowProvider;
-
+	CReflectProvider m_ReflectProvider;
 	SPerFrame m_perFrame;
 	SamplerTable m_SamplerTable;
 	int m_curCascade;

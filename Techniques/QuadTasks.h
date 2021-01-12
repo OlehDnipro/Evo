@@ -69,13 +69,13 @@ struct SWaterConst
 	static const char* GetName() { return "WaterConst"; }
 	float4x4 mvp;
 	float3 camPos;
-	float pad1;
+	float streamOffset;
 	float3 boxMax;
 	float pad2;
 	float3 boxMin;
 	float pad3;
 	float3 cubeCenter;
-	float pad4;
+	float waveOffsetScale;
 	float3 boxMaxFar;
 	float pad5;
 	float3 boxMinFar;
@@ -92,11 +92,18 @@ public:
 		m_Layout.AddParameter(SWaterConst::GetName(), (uint8_t*)p.m_Const.GetPtr() - (uint8_t*)&p.m_pBase);
 		m_Layout.AddParameter("WaveTex", (uint8_t*)&p.m_WaveTexture - (uint8_t*)&p.m_pBase);
 		m_Layout.AddParameter("EnvTex", (uint8_t*)&p.m_EnvTexture - (uint8_t*)&p.m_pBase);
+		m_Layout.AddParameter("PlanarReflection", (uint8_t*)&p.m_PlanarReflection - (uint8_t*)&p.m_pBase);
+		m_Layout.AddParameter("WaterNormalTile", (uint8_t*)&p.m_NormalTile - (uint8_t*)&p.m_pBase);
+
 	}
 	SWaterConst& Get() { return m_Const.Get(); }
 	void PrepareConstantBuffer(Context context, SResourceDesc* param) { m_Const.PrepareBuffer(context); }
 	SResourceDesc m_WaveTexture;
 	SResourceDesc m_EnvTexture;
+	SResourceDesc m_PlanarReflection;
+	SResourceDesc m_NormalTile;
+
+
 };
 
 class CWaterTask : public CRenderTask
@@ -105,11 +112,13 @@ public:
 	virtual bool CreateResources(Device device);
 	virtual void Draw(Context context);
 	void SetCameraLookAt(vec3 eye, vec3 target, vec3 up);
-	void SetTextures(Texture env, Texture wave);
+	void SetTextures(Texture env, Texture wave, Texture planar,Texture normalTile);
+	void Update();
 private:
 	void InitPipeline(Context context);
 	Pipeline m_Pipeline;
 	SamplerTable m_SamplerTable;
 	BlendState m_BlendState;
 	CWaterParameterProvider m_WaterProvider;
+	float m_StreamOffset = 0;
 };
