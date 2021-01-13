@@ -166,7 +166,8 @@ public:
 		refl_params.m_Height = m_DeviceParams.m_Height;
 		refl_params.m_Format = IMGFMT_RGBA8;
 		refl_params.m_MSAASampleCount = 1;
-
+		refl_params.m_ShaderResource = true;
+		refl_params.m_RenderTarget = true;
 		m_Reflection = CreateTexture(m_Device, refl_params);
 
 		db_params.m_Width = 1024;
