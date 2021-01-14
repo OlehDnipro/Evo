@@ -25,7 +25,8 @@ struct PixelIn
 {
 	float4 pos     : SV_Position;
 	float2 uv      : TexCoord0;
-	float2 waveUV  : TexCoord1;
+	float2 waveUV1 : TexCoord1;
+	float2 waveUV2 : TexCoord2;
 
 	float3 posW	   : Position0;	
 };
@@ -49,7 +50,9 @@ ROOT_END
 void main(VertexIn vert, out PixelIn res) 
 {
 	res.uv = vert.uv;
-	res.waveUV = res.uv*10;
+	res.waveUV1 = res.uv*10;
+	res.waveUV2 = res.uv*5;
+
 	res.pos = mul(WaterConst.mvp, float4(vert.pos, 1.0f));
 	res.posW = vert.pos;
 }
@@ -116,7 +119,7 @@ void main(PixelIn pix, out float4 outFragColor: SV_TARGET)
 		float3 lightPos = float3(6.18, 20, -19 );
 		float3 lightDir = normalize(-lightPos);
 
-		float4 wave = WaterNormalTile.Sample(ColorSampler, pix.waveUV + WaterConst.streamOffset);
+		float4 wave = (WaterNormalTile.Sample(ColorSampler, pix.waveUV1 +WaterConst.streamOffset ) + WaterNormalTile.Sample(ColorSampler, pix.waveUV2 + WaterConst.streamOffset))/2;
 		float3 waveNormal = normalize(wave.xyz * 2 - 1);
 		refl_uv = refl_uv + waveNormal.xy*WaterConst.waveOffsetScale; 
 		refl_uv.x = refl_uv.x / w;

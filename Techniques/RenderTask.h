@@ -110,6 +110,8 @@ public:
 struct SPerModel
 {
 	float4x4 model;
+	uint alphaCheck;
+	uint pad[3];
 	static const char* GetName() { return "ModelConst"; }
 };
 
@@ -134,11 +136,13 @@ class SimpleObject
 	Texture m_Texture;
 	friend class SimpleObjectInstance;
 	int m_Mark = 0;
+	bool m_ShadowsAlphaCheck = false;
 	public:
-	bool Init(Device device, VertexLayout layout, const char* model, const char* texture, float scale);
+	bool Init(Device device, VertexLayout layout, const char* model, const char* texture, float scale, bool depthApha = false);
 	int GetMark() const{ return m_Mark; }
 	void SetMark(int mark) { m_Mark = mark; }
 	Texture GetTexture() { return m_Texture; }
+	bool ShadowsAlphaCheck() const { return m_ShadowsAlphaCheck; }
 };
 class SimpleObjectInstance
 {

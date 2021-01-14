@@ -52,7 +52,7 @@ public:
 		m_Objects.resize(3);
 		m_Objects[0].Init(device, m_vertexLayout, "../../models/terrain_simple.dae", "../../Textures/gridlines.dds", 1.0f); m_Objects[0].SetMark(1);
 		m_Objects[1].Init(device, m_vertexLayout, "../../models/oak_trunk.dae", "../../Textures/oak_bark.dds", 2.0f); m_Objects[1].SetMark(2);
-		m_Objects[2].Init(device, m_vertexLayout, "../../models/oak_leafs.dae", "../../Textures/oak_leafs.dds", 2.0f); m_Objects[2].SetMark(2);
+		m_Objects[2].Init(device, m_vertexLayout, "../../models/oak_leafs.dae", "../../Textures/oak_leafs.dds", 2.0f, true); m_Objects[2].SetMark(2);
 		m_ObjectInstances.resize(9);
 		m_ObjectInstances[0] = new SimpleObjectInstance(m_Objects[0], device, mtx);
 
@@ -177,8 +177,8 @@ public:
 
 		STextureParams tb_params;
 		tb_params.m_Type = TextureType::TEX_2D_ARRAY;
-		tb_params.m_Width = 4096;
-		tb_params.m_Height = 4096;
+		tb_params.m_Width = 3072;
+		tb_params.m_Height = 3072;
 		tb_params.m_Format = IMGFMT_D16;
 		tb_params.m_MSAASampleCount = 1;
 		tb_params.m_DepthTarget = true;

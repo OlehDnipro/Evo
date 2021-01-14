@@ -23,16 +23,18 @@
 
 CParameterProviderLayout CParameterProviderBase<CModelParameterProvider>::m_Layout = CParameterProviderLayout(&CModelParameterProvider::CreateParameterMap);
 
-bool SimpleObject::Init(Device device, VertexLayout layout,const char* model, const char* texture, float scale)
+bool SimpleObject::Init(Device device, VertexLayout layout,const char* model, const char* texture, float scale, bool depthApha)
 {
 	m_Model.loadFromFile(model, layout, scale, device);
 	m_Texture = CreateTexture(device, texture);
+	m_ShadowsAlphaCheck = depthApha;
 	return true;
 }
 SimpleObjectInstance::SimpleObjectInstance(const SimpleObject& object, Device device,  float4x4 mtx) :m_Object(object)
 {
 	SBufferParams cb_params = { sizeof(SPerModel), HeapType::HEAP_DEFAULT, Usage::CONSTANT_BUFFER, "" };
 	m_Provider.Get().model = mtx;
+	m_Provider.Get().alphaCheck = object.ShadowsAlphaCheck();
 	m_Provider.m_ModelTexture = m_Object.m_Texture ;
 }
 void SimpleObjectInstance::Draw(Context context)

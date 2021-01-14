@@ -17,6 +17,7 @@ struct SShadow
 {
 	float4x4 lightViewProjection[SHADOW_CASCADES_COUNT];
 	float4 cascadeSplits;
+
 };
 struct SReflect
 {
@@ -27,6 +28,8 @@ struct SReflect
 struct SPerModel
 {
 	float4x4 model;
+	uint alphaCheck;
+	uint3 pad;
 };
 struct PixelIn
 {
@@ -95,20 +98,21 @@ float SamplePCF(float4 shadowPos, int cascade)
 	{
 		for(int j = -1; j <= 1; j++ )
 		{
-			inLight += ShadowMapCascades.SampleCmp(ShadowSampler, float3(uv + float2(i*PCF_step,j*PCF_step), cascade), shadowPos.z - 0.001);
+			inLight += ShadowMapCascades.SampleCmp(ShadowSampler, float3(uv + float2(i*PCF_step,j*PCF_step), cascade), shadowPos.z - 0.002);
 		}
 	}
 	return inLight / 9;
 }
 void main(PixelIn pix, out float4 outFragColor: SV_TARGET)
 {
+	
+#ifndef SHADOWPASS
 	float4 color = ModelTexture.Sample(ColorSampler, pix.uv);
 	
 	if(color.a < 0.5)
 	{
 		clip(-1);
 	}
-#ifndef SHADOWPASS
 	// Directional light
 	float3 N = normalize(pix.normal);
 	#ifdef REFLECTION
@@ -134,5 +138,16 @@ void main(PixelIn pix, out float4 outFragColor: SV_TARGET)
 	float3 lightColor = float3(1.0f,1.0f,1.0f);
 	outFragColor.rgb = max(lightColor * (diffuse * color.rgb), float3(0.0f, 0.0f, 0.0f));
 	outFragColor.a = color.a;
+	
+#else
+	if(ModelConst.alphaCheck)
+	{
+		float4 color = ModelTexture.Sample(ColorSampler, pix.uv);
+	
+		if(color.a < 0.5)
+		{
+			clip(-1);
+		}
+	}
 #endif
 } 
