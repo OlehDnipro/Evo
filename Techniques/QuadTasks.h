@@ -112,8 +112,12 @@ public:
 	virtual bool CreateResources(Device device);
 	virtual void Draw(Context context);
 	void SetCameraLookAt(vec3 eye, vec3 target, vec3 up);
+	void SetBox(vec3 center, vec3 min, vec3 max, vec3 minFar, vec3 maxFar);
+	void SetSpeed(float val) { m_Speed = val; };
+	void SetWaveOffset(float val);
+
 	void SetTextures(Texture env, Texture wave, Texture planar,Texture normalTile);
-	void Update();
+	void Update(float delta);
 private:
 	void InitPipeline(Context context);
 	Pipeline m_Pipeline;
@@ -121,4 +125,5 @@ private:
 	BlendState m_BlendState;
 	CWaterParameterProvider m_WaterProvider;
 	float m_StreamOffset = 0;
+	float m_Speed = 0;
 };

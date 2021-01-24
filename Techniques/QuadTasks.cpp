@@ -204,19 +204,25 @@ void CWaterTask::SetCameraLookAt(vec3 eye, vec3 target, vec3 up)
 { 
 	CRenderTask::SetCameraLookAt(eye, target, up);
 	m_WaterProvider.Get().camPos = eye;
-	m_WaterProvider.Get().cubeCenter = vec3(3.25, 0.75, 1.75);
-	m_WaterProvider.Get().boxMax = vec3(5.5, 1.75, 4);
-	m_WaterProvider.Get().boxMin = vec3(2, -0.25, -0.5);
-	m_WaterProvider.Get().boxMaxFar = vec3(8.5, 1.75, 7);
-	m_WaterProvider.Get().boxMinFar = vec3(-1, -0.25, -3.5);
 	m_WaterProvider.Get().mvp = mul(m_Camera.GetProjection(), m_Camera.GetViewTransform());
-	m_WaterProvider.Get().waveOffsetScale = 20;
 }
+void CWaterTask::SetBox(vec3 center, vec3 min, vec3 max, vec3 minFar, vec3 maxFar)
+{
+	m_WaterProvider.Get().cubeCenter = center ;
+	m_WaterProvider.Get().boxMax = max;
+	m_WaterProvider.Get().boxMin = min;
+	m_WaterProvider.Get().boxMaxFar = maxFar;
+	m_WaterProvider.Get().boxMinFar = minFar;
+}
+void CWaterTask::SetWaveOffset(float val) 
+{
+	m_WaterProvider.Get().waveOffsetScale = val;
+};
 
-void CWaterTask::Update()
+void CWaterTask::Update(float delta)
 {
 	m_WaterProvider.Get().streamOffset = m_StreamOffset;
-	m_StreamOffset += 1.0f / 256;// ((Texture)m_WaterProvider.m_WaveTexture.m_Resource)->m_Width;
+	m_StreamOffset += delta * m_Speed;
 }
 
 void CWaterTask::SetTextures(Texture env, Texture wave, Texture planar, Texture normalTile)

@@ -105,6 +105,12 @@ public:
 	PrimitiveType GetPrimType() { return PRIM_TRIANGLES; };
 
 };
+#define WATERTEX_SPEED 0.125
+#define WATERDROP_SPEED 0.025
+
+#define WAVE_OFFSET 20
+
+
 class EvoApp : public DemoApp
 {
 	Texture m_ColorBuffer, m_ShadowMap;
@@ -124,6 +130,7 @@ class EvoApp : public DemoApp
 	CWaterDropTask m_DropTask;
 	CWaterTask m_WaterTask;
 	uint m_CurDropTex = 1;
+	float m_dropTime = 0, m_dropUpdateTime = 0;
 public:
 	EvoApp() :DemoApp(), m_Poly(8)
 	{
@@ -281,8 +288,10 @@ public:
 		m_Poly.UpdatePos(0.025, float2(0, 0));
 
 		m_WaterTask.SetTextures(m_CubeMap, m_RingDrop[0], m_Reflection, m_NormalTile);
+		m_WaterTask.SetBox(eye, vec3(5.5, 1.75, 4), vec3(2, -0.25, -0.5), vec3(8.5, 1.75, 7), vec3(-1, -0.25, -3.5));
+		m_WaterTask.SetSpeed(WATERTEX_SPEED);
+		m_WaterTask.SetWaveOffset(WAVE_OFFSET);
 		m_Shadows.SetCubeProjection(false);
-
 	}
 	~EvoApp()
 	{
@@ -293,7 +302,7 @@ public:
 	void Update()
 	{
 		DemoApp::Update();
-		m_WaterTask.Update();
+		m_WaterTask.Update(m_Timer.GetFrameTime());
 	}
 
 	void UpdateCamera()
@@ -360,9 +369,10 @@ public:
 		}
         Barrier(context, { { m_ShadowMap,  EResourceState::RS_SHADER_READ} });
         SetDepthTarget(context, { (Texture)nullptr });
-		if (m_CurDropTex == 1)
+		float delta = m_Timer.GetFrameTime();
+		if (m_CurDropTex == 1 && (m_dropTime == 0 || m_dropTime > WATERDROP_SPEED*100))
 		{
-			if (frame % 100 == 0)
+			m_dropTime -= WATERDROP_SPEED * 100;
 			{
 				SetClearColors(context, gray, depthFar);
 				SetRenderTarget(context, { m_RingDrop[0] }, 0);
@@ -380,21 +390,25 @@ public:
 
 			}
 		}
+		m_dropTime += delta;
+		m_dropUpdateTime += delta;
+		if (m_dropUpdateTime > WATERDROP_SPEED)
+		{
+			m_dropUpdateTime -= WATERDROP_SPEED;
+			SetRenderTarget(context, { m_RingDrop[m_CurDropTex] }, 0);
 
-		SetRenderTarget(context, { m_RingDrop[m_CurDropTex] }, 0);
+			Barrier(context, { { m_RingDrop[m_CurDropTex], EResourceState::RS_RENDER_TARGET} });
 
-		Barrier(context, { { m_RingDrop[m_CurDropTex], EResourceState::RS_RENDER_TARGET} });
+			BeginRenderPass(context, "Phys");
+			m_DropTask.Draw(context);
+			EndRenderPass(context);
 
-		BeginRenderPass(context, "Phys");
-		m_DropTask.Draw(context);
-		EndRenderPass(context);
+			Barrier(context, { { m_RingDrop[m_CurDropTex], EResourceState::RS_SHADER_READ} });
 
-		Barrier(context, { { m_RingDrop[m_CurDropTex], EResourceState::RS_SHADER_READ} });
+			m_Quad.SetTexture(m_RingDrop[m_CurDropTex]);
 
-		m_Quad.SetTexture(m_RingDrop[m_CurDropTex]);
-
-		m_CurDropTex = 1 - m_CurDropTex;
-		
+			m_CurDropTex = 1 - m_CurDropTex;
+		}
 		SetRenderTarget(context, m_Reflection, 0);
 		SetDepthTarget(context, m_DepthBuffer);
 		Barrier(context, { {m_Reflection , EResourceState::RS_RENDER_TARGET} });
