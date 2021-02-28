@@ -5,14 +5,7 @@
 #include "RenderTask.h"
 #define SHADOW_MAP_CASCADE_COUNT 4
 
-struct SPerFrame
-{
-	static const char* GetName() { return "ViewportConst"; }
-	float4x4 projection;
-	float4x4 view;
-	float3 lightDir;
-	double pad;
-};
+
 struct SShadow
 {
 	static const char* GetName() { return "ShadowConst"; }
@@ -27,18 +20,6 @@ struct SReflect
 	float4 plane;
 };
 
-class CViewportParameterProvider : public CParameterProviderBase<CViewportParameterProvider>
-{
-public:
-	CConstantParameter<SPerFrame> m_Const;
-	static void CreateParameterMap()
-	{
-		CViewportParameterProvider p;
-		m_Layout.AddParameter(SPerFrame::GetName(), (uint8_t*)p.m_Const.GetPtr() - (uint8_t*)&p.m_pBase);
-	}
-	SPerFrame& Get() { return m_Const.Get(); }
-	void PrepareConstantBuffer(Context context, SResourceDesc* param) { m_Const.PrepareBuffer(context); }
-};
 
 class CReflectProvider : public CParameterProviderBase<CReflectProvider>
 {

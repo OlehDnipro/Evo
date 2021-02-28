@@ -3,7 +3,6 @@
 #include "ShadowMapCascade.h"
 #include "Shaders\Tech\ShadowMapCascade.pipeline.h"
 
-CParameterProviderLayout CParameterProviderBase<CViewportParameterProvider>::m_Layout = CParameterProviderLayout(&CViewportParameterProvider::CreateParameterMap);
 CParameterProviderLayout CParameterProviderBase<CShadowParameterProvider>::m_Layout = CParameterProviderLayout(&CShadowParameterProvider::CreateParameterMap);
 CParameterProviderLayout CParameterProviderBase<CReflectProvider>::m_Layout = CParameterProviderLayout(&CReflectProvider::CreateParameterMap);
 

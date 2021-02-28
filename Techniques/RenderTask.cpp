@@ -22,6 +22,7 @@
 #include "RenderTask.h"
 
 CParameterProviderLayout CParameterProviderBase<CModelParameterProvider>::m_Layout = CParameterProviderLayout(&CModelParameterProvider::CreateParameterMap);
+CParameterProviderLayout CParameterProviderBase<CViewportParameterProvider>::m_Layout = CParameterProviderLayout(&CViewportParameterProvider::CreateParameterMap);
 
 bool SimpleObject::Init(Device device, VertexLayout layout,const char* model, const char* texture, float scale, bool depthApha)
 {

@@ -24,6 +24,8 @@
 #include "Humus/Windows/Resource.h"
 
 #include "Techniques/ShadowMapCascade.h"
+#include "Techniques/PBR.h"
+
 #include "ParameterProviderRegistry.h"
 /*
 #include "../CPU.h"
@@ -129,6 +131,9 @@ class EvoApp : public DemoApp
 	CPolygonTask m_PolyTask;
 	CWaterDropTask m_DropTask;
 	CWaterTask m_WaterTask;
+
+	CPBRTask m_PBR;
+	CSphereGeometry m_Spheres;
 	uint m_CurDropTex = 1;
 	float m_dropTime = 0, m_dropUpdateTime = 0;
 public:
@@ -146,6 +151,7 @@ public:
 										{ { 5.5, -0.25, -0.5},   {1, 1} },
 										{ {2, -0.25, -0.5},   {0, 1} }
 			});
+		m_Spheres.Create(m_Device);
 		m_PolyTask.SetGeometry(&m_Poly);
 		m_DropTask.SetGeometry(&m_Quad);
 		m_PolyTask.CreateResources(m_Device);
@@ -154,6 +160,8 @@ public:
 		m_Shadows.CreateResources(m_Device);
 		m_WaterTask.CreateResources(m_Device);
 		m_WaterTask.SetGeometry(&m_WaterQuad);
+		m_PBR.CreateResources(m_Device);
+		m_PBR.SetGeometry(&m_Spheres);
 		CreateRenderSetups();
 
 		return true;
@@ -339,6 +347,7 @@ public:
 		
 		m_Shadows.SetCameraLookAt(m_CamPos, m_CamPos + m_CamDir, vec3(0,1,0));
 		m_WaterTask.SetCameraLookAt(m_CamPos, m_CamPos + m_CamDir, vec3(0, 1, 0));
+		m_PBR.SetCameraLookAt(m_CamPos, m_CamPos + m_CamDir, vec3(0, 1, 0));
 	}
 	virtual void ResetCamera()
 	{
@@ -427,6 +436,7 @@ public:
 		BeginRenderPass(context, "Main");
 		m_Shadows.SetPassParameters(context, ShadowMapCascade::MainPass);
 		m_Shadows.Draw(context);
+		m_PBR.Draw(context);
 		EndRenderPass(context);
 
 		BeginRenderPass(context, "Water", false, false);

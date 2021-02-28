@@ -115,6 +115,16 @@ struct SPerModel
 	static const char* GetName() { return "ModelConst"; }
 };
 
+struct SPerFrame
+{
+	static const char* GetName() { return "ViewportConst"; }
+	float4x4 projection;
+	float4x4 view;
+	float3 lightDir;
+	float pad;
+	float3 camPos;
+	float pad1;
+};
 class CModelParameterProvider : public CParameterProviderBase<CModelParameterProvider>
 {
 public:
@@ -128,6 +138,19 @@ public:
 	}
 	SPerModel& Get() { return m_ModelConst.Get(); }
 	void PrepareConstantBuffer(Context context, SResourceDesc* param) { m_ModelConst.PrepareBuffer(context); }
+};
+
+class CViewportParameterProvider : public CParameterProviderBase<CViewportParameterProvider>
+{
+public:
+	CConstantParameter<SPerFrame> m_Const;
+	static void CreateParameterMap()
+	{
+		CViewportParameterProvider p;
+		m_Layout.AddParameter(SPerFrame::GetName(), (uint8_t*)p.m_Const.GetPtr() - (uint8_t*)&p.m_pBase);
+	}
+	SPerFrame& Get() { return m_Const.Get(); }
+	void PrepareConstantBuffer(Context context, SResourceDesc* param) { m_Const.PrepareBuffer(context); }
 };
 class SimpleObjectInstance;
 class SimpleObject
