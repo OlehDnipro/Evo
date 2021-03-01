@@ -111,21 +111,39 @@ void CSphereGeometry::DefineVertexFormat(vector<AttribDesc>& format)
 
 void CSphereGeometry::Draw(Context context, CShaderCache& cache, int resources_slot)
 {
-	IParameterProvider* prov[] = { &m_Provider };
+	for (int i = 0; i < 4; i++)
+	{
+		for (int j = 0; j < 4; j++)
+		{
+			float4x4 mtx;
+			mtx.identity();
+			mtx.rows[0].x = 0.1;
+			mtx.rows[1].y = 0.1;
+			mtx.rows[2].z = 0.1;
+			mtx = mul(translate(float3(0.25 * i, 1 - 0.25 * j, 0)), mtx);
+			m_Provider.Get().model = mtx;
+			m_Provider.Get().material = float4(0.1 + 0.2 * i, 0.1 + 0.2 * j, 0.75, 0);
+			m_Provider.Get().baseColor = float3(1, 0, 0);
+			{
+				IParameterProvider* prov[] = { &m_Provider };
 
-	cache.GatherParameters(context, &prov[0], 1);
+				cache.GatherParameters(context, &prov[0], 1);
 
-	ResourceTable rt = CreateResourceTable(GetDevice(context), cache.GetRootSignature(), resources_slot, nullptr, 0, context);
+				ResourceTable rt = CreateResourceTable(GetDevice(context), cache.GetRootSignature(), resources_slot, nullptr, 0, context);
 
-	cache.UpdateResourceTable(GetDevice(context), resources_slot, rt);
+				cache.UpdateResourceTable(GetDevice(context), resources_slot, rt);
 
-	SetGraphicsResourceTable(context, resources_slot, rt);
+				SetGraphicsResourceTable(context, resources_slot, rt);
 
-	DestroyResourceTable(GetDevice(context), rt);
+				DestroyResourceTable(GetDevice(context), rt);
 
-	SetVertexSetup(context, m_VertexSetup); 
+				SetVertexSetup(context, m_VertexSetup);
+
+				::DrawIndexed(context, 0, m_meshIndicesCount);
+			}
+		}
+	}
 	
-	::DrawIndexed(context, 0, m_meshIndicesCount);
 }
 
 
@@ -181,6 +199,7 @@ void CPBRTask::Draw(Context context)
 	SetPipeline(context, m_Pipeline);
 	IParameterProvider* prov[] = { &m_ViewportProvider };
 	m_Cache.GatherParameters(context, &prov[0], 1);
+	
 	m_Collection->Draw(context, m_Cache, 0);
 }
 
