@@ -111,7 +111,7 @@ void main(PixelIn pix, out float4 outFragColor: SV_TARGET)
 			refl = EnvTex.Sample(ColorSampler, float4(reflVec,1));
 		}
 		refl*=0.9;
-		outFragColor = lerp(refl, refr, -dot(viewVec, normal));
+		outFragColor = lerp(refl, refr, dot(-viewVec, normal));
 	}
 	else
 	{	
@@ -125,9 +125,9 @@ void main(PixelIn pix, out float4 outFragColor: SV_TARGET)
 		refl_uv.x = refl_uv.x / w;
 		refl_uv.y = refl_uv.y / h;		
 		float4 prefl = PlanarReflection.Sample(ColorSampler, refl_uv);
-		outFragColor = lerp(prefl, refr, -dot(viewVec, normal));
+		outFragColor = lerp(prefl, refr, dot(-viewVec, normal));
 		
-		float spec = dot(reflect(-lightDir, float3(waveNormal.x, 1, waveNormal.y)), viewVec);
+		float spec = dot(reflect(lightDir, float3(waveNormal.x, 1, waveNormal.y)), -viewVec);
 		
 		spec = pow(spec > 0 ? spec : 0, 16);
 		outFragColor += float4(0.5,0.5,0.5,0.5)*spec;
