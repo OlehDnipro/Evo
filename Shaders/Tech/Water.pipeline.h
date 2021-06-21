@@ -38,6 +38,24 @@ const char* RootItemNames[2][6] =
 
 };
 
+const char* RootItemTypes[2][6] =
+{
+
+	{
+		"SamplerState"
+	},
+
+	{
+		"SWaterConst",
+		"SPBRModel",
+		"Texture2D  ",
+		"Texture2D  ",
+		"Texture2D  ",
+		"TextureCubeArray"
+	},
+
+};
+
 static const char RootSig[] =
 	"\2\0\0\0\10\0\0\0\1\0\0\0\7\0\0\0\6\0\0\0\6\0\0\0\1\0\0\0\5\0\0\0\1\0\0\0\5\0\0\0\1\0\0\0\1\0\0\0\1\0\0\0\1\0\0\0\1\0\0\0\1\0\0\0"
 	"\1\0\0\0\1\0\0\0\1\0\0\0";

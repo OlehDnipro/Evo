@@ -613,6 +613,28 @@ static Error WriteCppHeader(FILE* file, const char* header, size_t header_size, 
 		}
 		fprintf(file, "\n};\n");
 	}
+	if (max_table_size)
+	{
+		fprintf(file, "\nconst char* RootItemTypes[%d][%d] =\n{\n", items.size(), max_table_size);
+
+		// ResourceTable slots
+		for (const SItem& it : items)
+		{
+			fprintf(file, "\n\t{\n");
+			int cur = 0;
+			for (const SItem& sit : it.m_SubItems)
+			{
+				fprintf(file, "\t\t\"%s\"", sit.m_Type.c_str());
+				if (cur != it.m_SubItems.size() - 1)
+				{
+					fprintf(file, ",\n");
+				}
+				cur++;
+			}
+			fprintf(file, "\n\t},\n");
+		}
+		fprintf(file, "\n};\n");
+	}
 	if (api == D3D12)
 	{
 		// Write root signature blob

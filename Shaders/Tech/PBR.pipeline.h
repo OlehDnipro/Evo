@@ -25,6 +25,16 @@ const char* RootItemNames[1][2] =
 
 };
 
+const char* RootItemTypes[1][2] =
+{
+
+	{
+		"SPerFrame",
+		"SPBRModel"
+	},
+
+};
+
 static const char RootSig[] =
 	"\1\0\0\0\7\0\0\0\2\0\0\0\5\0\0\0\1\0\0\0\5\0\0\0\1\0\0\0";
 

@@ -28,6 +28,19 @@ const char* RootItemNames[2][1] =
 
 };
 
+const char* RootItemTypes[2][1] =
+{
+
+	{
+		"SamplerState"
+	},
+
+	{
+		"Texture2D"
+	},
+
+};
+
 static const char RootSig[] =
 	"\2\0\0\0\10\0\0\0\1\0\0\0\7\0\0\0\1\0\0\0\6\0\0\0\1\0\0\0\1\0\0\0\1\0\0\0";
 
