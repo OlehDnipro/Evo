@@ -132,7 +132,7 @@ class EvoApp : public DemoApp
 	CPolygonTask m_PolyTask;
 	CWaterDropTask m_DropTask;
 	CWaterTask m_WaterTask;
-	CÑomputeSHTask m_ComputeSHTask;
+	CComputeSHTask m_ComputeSHTask;
 	CPBRTask m_PBR;
 	CSphereGeometry m_Spheres;
 	uint m_CurDropTex = 1;
@@ -364,7 +364,7 @@ public:
 	void DrawFrame(Context context, uint buffer_index)
 	{
 		static uint frame = 0;
-
+		m_ComputeSHTask.Execute(context);
 		float depthFar[2] = { 1,0 };
 		float gray[4] = { 0.5, 0.5, 0.5, 0.5 };
 		float black[4] = { 0,0,0,0 };

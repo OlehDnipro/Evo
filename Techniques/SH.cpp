@@ -7,7 +7,7 @@ const char* GetResourceNameSH(uint slot, uint binding)
 	return NSH::RootItemNames[slot][binding];
 }
 
-void CÑomputeSHTask::SetTextures(SResourceDesc env, SResourceDesc out)
+void CComputeSHTask::SetTextures(SResourceDesc env, SResourceDesc out)
 {
 	m_Provider.m_EnvTex = env;
 	m_Provider.m_OutTex = out;
@@ -16,12 +16,12 @@ void CÑomputeSHTask::SetTextures(SResourceDesc env, SResourceDesc out)
 	m_Provider.m_SumBufferChannelSize = ((m_Provider.m_TexSize.x - 1)/ 32 + 1) * ((m_Provider.m_TexSize.y - 1) / 32 + 1) *6;
 	m_Provider.m_SumBufferSize = m_Provider.m_SumBufferChannelSize * 3;
 }
-CÑomputeSHTask::~CÑomputeSHTask()
+CComputeSHTask::~CComputeSHTask()
 {
 //	DestroyBuffer(m_Device, (Buffer)m_Provider.m_SumBuffer.m_Resource);
 //	DestroyBuffer(m_Device, (Buffer)m_Provider.m_BaseBuffer.m_Resource);
 }
-bool CÑomputeSHTask::CreateResources(Device device)
+bool CComputeSHTask::CreateResources(Device device)
 {
     m_Device = device;
     bool root =  m_Cache.CreateRootSignature(m_Device, NSH::RootSig, nullptr);
@@ -51,7 +51,7 @@ bool CÑomputeSHTask::CreateResources(Device device)
 	m_SumBufferReadback = CreateBuffer(m_Device, params);
 }
 
-void CÑomputeSHTask::Execute(Context context)
+void CComputeSHTask::Execute(Context context)
 {
 	InitPipeline(context);
 	SetRootSignature(context, m_Cache.GetRootSignature());
@@ -76,11 +76,11 @@ void CÑomputeSHTask::Execute(Context context)
 
 	DestroyResourceTable(GetDevice(context), rt);
 
-	Dispatch(context,( m_Provider.m_TexSize.x - 1) / 32 + 1, (m_Provider.m_TexSize.y - 1) / 32 + 1, 1);
+	Dispatch(context,( m_Provider.m_TexSize.x - 1) / 32 + 1, (m_Provider.m_TexSize.y - 1) / 32 + 1, 6);
 	
 }
 
-void CÑomputeSHTask::InitPipeline(Context context)
+void CComputeSHTask::InitPipeline(Context context)
 {
 	if (!m_PipelineBase)
 	{	

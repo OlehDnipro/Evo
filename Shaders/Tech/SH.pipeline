@@ -43,7 +43,7 @@ ROOT_END
 #define Face_Left 4 
 #define Face_Right 5  
 groupshared ShPoly ShSumTemp[3];
-[numthreads(32, 32, 8)]
+[numthreads(32, 32, 1)]
 void main(uint3 DTid : SV_DispatchThreadID) 
 {
 	uint2 res= uint2(1024,1024);

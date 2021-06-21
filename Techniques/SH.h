@@ -31,13 +31,13 @@ public:
 	int m_SumBufferSize, m_SumBufferChannelSize;
 };
 
-class CÑomputeSHTask 
+class CComputeSHTask 
 {
 public:
 	 bool CreateResources(Device device);
 	 void Execute(Context context);
 	 void SetTextures(SResourceDesc env, SResourceDesc out);
-	 ~CÑomputeSHTask();
+	 ~CComputeSHTask();
 private:
 	Pipeline m_PipelineBase, m_PipelineTex;
 	void InitPipeline(Context context);
