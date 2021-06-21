@@ -25,6 +25,7 @@
 
 #include "Techniques/ShadowMapCascade.h"
 #include "Techniques/PBR.h"
+#include "Techniques/SH.h"
 
 #include "ParameterProviderRegistry.h"
 /*
@@ -121,7 +122,7 @@ class EvoApp : public DemoApp
 	ShadowMapCascade m_Shadows;
 	CTreeFieldCollection m_TreeField;
 	Texture m_RingDrop[2];
-	Texture m_CubeMap;
+	Texture m_CubeMap, m_SHCubeMap;
 	Texture m_Reflection;
 	Texture m_NormalTile;
 	CTexturedQuadGeometry m_Quad;
@@ -131,7 +132,7 @@ class EvoApp : public DemoApp
 	CPolygonTask m_PolyTask;
 	CWaterDropTask m_DropTask;
 	CWaterTask m_WaterTask;
-
+	CÑomputeSHTask m_ComputeSHTask;
 	CPBRTask m_PBR;
 	CSphereGeometry m_Spheres;
 	uint m_CurDropTex = 1;
@@ -225,6 +226,11 @@ public:
 		cube_params.m_ShaderResource = true;
 		cube_params.m_Slices = 2;
 		m_CubeMap = CreateTexture(m_Device, cube_params);
+		cube_params.m_Slices = 1;
+		m_SHCubeMap = CreateTexture(m_Device, cube_params);
+
+		m_ComputeSHTask.SetTextures({ m_CubeMap, {1,-1,-1} }, m_SHCubeMap);
+		m_ComputeSHTask.CreateResources(m_Device);
 		m_NormalTile = CreateTexture(m_Device, "../../Textures/water.dds", 1);
 		float depthFar[2] = { 1,0 };
 		float gray[4] = { 0.5, 0.5, 0.5, 0.5 };
@@ -294,7 +300,6 @@ public:
 		UpdateCamera();
 
 		m_Poly.UpdatePos(0.025, float2(0, 0));
-
 		m_WaterTask.SetTextures(m_CubeMap, m_RingDrop[0], m_Reflection, m_NormalTile);
 		m_WaterTask.SetBox(eye, vec3(5.5, 1.75, 4), vec3(2, -0.25, -0.5), vec3(8.5, 1.75, 7), vec3(-1, -0.25, -3.5));
 		m_WaterTask.SetSpeed(WATERTEX_SPEED);
@@ -358,8 +363,6 @@ public:
 
 	void DrawFrame(Context context, uint buffer_index)
 	{
-
-
 		static uint frame = 0;
 
 		float depthFar[2] = { 1,0 };
@@ -442,7 +445,7 @@ public:
 		BeginRenderPass(context, "Water", false, false);
 		m_WaterTask.Draw(context);
 		EndRenderPass(context);
-		
+
         Barrier(context, { { bb , EResourceState::RS_PRESENT} });
 		frame++;
 	};

@@ -645,5 +645,7 @@ void UAVBarrier(Context context, Buffer buffer = nullptr);
 void Barrier(Context context, const SBarrierDesc* barriers, uint count);
 template<int N> force_inline void Barrier(Context context, const SBarrierDesc(&barriers)[N]) { Barrier(context, barriers, N); }
 void IterateRootSignature(RootSignature root, void* callback, void* receiver);
-
+uint GetWidth(Texture texture);
+uint GetHeight(Texture texture);
+uint GetDepth(Texture texture);
 

@@ -242,6 +242,13 @@ public:
 	virtual ~IObjectCollection();
 };
 
+class CComputeTask
+{
+	virtual bool CreateResources(Device device) = 0;
+protected:
+	CShaderCache m_Cache;
+	Device m_Device;
+};
 class CRenderTask
 {
 public:

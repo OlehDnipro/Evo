@@ -2796,6 +2796,18 @@ void UnmapBuffer(const SMapBufferParams& params)
 		vkUnmapMemory(params.m_Device->m_Device, params.m_Buffer->m_Memory);
 	}
 }
+uint GetWidth(Texture texture)
+{
+	return texture->m_Width;
+}
+uint GetHeight(Texture texture)
+{
+	return texture->m_Height;
+}
+uint GetDepth(Texture texture)
+{
+	return texture->m_Depth;
+}
 
 void SetTextureData(Context context, Texture texture, uint mip, uint slice, const void* data, uint size, uint pitch)
 {
