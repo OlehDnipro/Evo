@@ -14,7 +14,14 @@ struct SWaterConst
 	float3 boxMinFar;
 	float pad6;
 };
-
+struct SPBRModel
+{
+	float4x4 model;
+	float4 material;
+	//roughness, metallness, reflectance,..
+	float3 baseColor;
+	float pad;
+};
 struct VertexIn
 {
 	float3 pos    : Position;
@@ -30,6 +37,7 @@ struct PixelIn
 
 	float3 posW	   : Position0;	
 };
+#include "PBRMath.h"
 
 [Rootsig]
 ROOT_BEGIN
@@ -39,6 +47,8 @@ ROOT_BEGIN
 
 	RT_BEGIN Resources
 		CBUFFER	SWaterConst WaterConst;
+		CBUFFER	SPBRModel ModelConstPBR;
+
 		TEXTURE Texture2D   WaveTex;
 		TEXTURE Texture2D   PlanarReflection;
 		TEXTURE Texture2D   WaterNormalTile;
@@ -81,7 +91,7 @@ float3 Parallax(float3 pos, float3 dir, uint is_far)
 
 void main(PixelIn pix, out float4 outFragColor: SV_TARGET)
 {
-	const float4 waterColor = float4(0.3, 0.4, 1.0, 0.0);
+	const float4 waterColor = float4(ModelConstPBR.baseColor, 0.0);
 
 	float4 s = WaveTex.Sample(ColorSampler, pix.uv) - 0.5;
 	float sobelX = s.z;
@@ -98,6 +108,9 @@ void main(PixelIn pix, out float4 outFragColor: SV_TARGET)
 	float2 refl_uv = pix.pos.xy;
 	
 	
+	float3 lightPos = float3(6.18, 15, -19 );
+	float3 lightDir = normalize(-lightPos);
+	float3 usedNormal;
 	float3 refrVec = Parallax(pix.posW, normalize(refract(viewVec, normal, 0.85)),0);
 	float4 refr = EnvTex.Sample(ColorSampler, float4(refrVec,0)) * waterColor;
 
@@ -112,25 +125,30 @@ void main(PixelIn pix, out float4 outFragColor: SV_TARGET)
 		}
 		refl*=0.9;
 		outFragColor = lerp(refl, refr, dot(-viewVec, normal));
+		usedNormal = normal;
 	}
 	else
-	{	
-
-		float3 lightPos = float3(6.18, 20, -19 );
-		float3 lightDir = normalize(-lightPos);
-
+	{ 
 		float4 wave = (WaterNormalTile.Sample(ColorSampler, pix.waveUV1 +WaterConst.streamOffset ) + WaterNormalTile.Sample(ColorSampler, pix.waveUV2 + WaterConst.streamOffset))/2;
-		float3 waveNormal = normalize(wave.xyz * 2 - 1);
-		refl_uv = refl_uv + waveNormal.xy*WaterConst.waveOffsetScale; 
+		float3 waveNormalUV = normalize(wave.xyz * 2 - 1);
+		refl_uv = refl_uv + waveNormalUV.xy*WaterConst.waveOffsetScale; 
 		refl_uv.x = refl_uv.x / w;
 		refl_uv.y = refl_uv.y / h;		
 		float4 prefl = PlanarReflection.Sample(ColorSampler, refl_uv);
-		outFragColor = lerp(prefl, refr, dot(-viewVec, normal));
-		
-		float spec = dot(reflect(lightDir, float3(waveNormal.x, 1, waveNormal.y)), -viewVec);
+		outFragColor = lerp(prefl, refr, dot(-viewVec, normal)); 
+		/*
+		float spec = dot(reflect(lightDir, float3(waveNormalUV.x, 1, waveNormalUV.y)), -viewVec);
 		
 		spec = pow(spec > 0 ? spec : 0, 16);
 		outFragColor += float4(0.5,0.5,0.5,0.5)*spec;
+		*/
+		float3 waveNormal = normalize(float3(waveNormalUV.x, 1, waveNormalUV.y));
+		usedNormal = waveNormal;
 	}
-	outFragColor.a = 0.75;
+	float k = dot(-lightDir,usedNormal); 
+	float3 color = BRDF(outFragColor.rgb,  -viewVec, -lightDir,usedNormal,ModelConstPBR.material.x,ModelConstPBR.material.y,ModelConstPBR.material.z, false, false)*k;
+//	color += float3(0,0.01,0.03);
+	color  = color  / (color  + 1);
+    color = pow(color, 1.0/2.2);  
+	outFragColor = float4(color, 0.75);  
 } 

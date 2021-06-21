@@ -86,10 +86,13 @@ class CWaterParameterProvider : public CParameterProviderBase<CWaterParameterPro
 {
 public:
 	CConstantParameter<SWaterConst> m_Const;
+	CConstantParameter<SPBRModel> m_PBR;
 	static void CreateParameterMap()
 	{
 		CWaterParameterProvider p;
 		m_Layout.AddParameter(SWaterConst::GetName(), (uint8_t*)p.m_Const.GetPtr() - (uint8_t*)&p.m_pBase);
+		m_Layout.AddParameter(SPBRModel::GetName(), (uint8_t*)p.m_PBR.GetPtr() - (uint8_t*)&p.m_pBase);
+
 		m_Layout.AddParameter("WaveTex", (uint8_t*)&p.m_WaveTexture - (uint8_t*)&p.m_pBase);
 		m_Layout.AddParameter("EnvTex", (uint8_t*)&p.m_EnvTexture - (uint8_t*)&p.m_pBase);
 		m_Layout.AddParameter("PlanarReflection", (uint8_t*)&p.m_PlanarReflection - (uint8_t*)&p.m_pBase);
@@ -97,7 +100,15 @@ public:
 
 	}
 	SWaterConst& Get() { return m_Const.Get(); }
-	void PrepareConstantBuffer(Context context, SResourceDesc* param) { m_Const.PrepareBuffer(context); }
+	SPBRModel& GetPBR() { return m_PBR.Get(); }
+
+	void PrepareConstantBuffer(Context context, SResourceDesc* param) 
+	{
+		if(param == m_Const.GetPtr())
+			m_Const.PrepareBuffer(context);
+		else
+			m_PBR.PrepareBuffer(context); 
+	}
 	SResourceDesc m_WaveTexture;
 	SResourceDesc m_EnvTexture;
 	SResourceDesc m_PlanarReflection;

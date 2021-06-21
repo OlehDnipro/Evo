@@ -114,7 +114,7 @@ bool ShadowMapCascade::CreateResources(Device device)
 	const SSamplerDesc samplers[] = { { FILTER_TRILINEAR, 1, AM_WRAP, AM_WRAP, AM_WRAP, ALWAYS }, { FILTER_LINEAR, 1, AM_WRAP, AM_WRAP, AM_WRAP, LESS } };
 	if ((m_SamplerTable = CreateSamplerTable(m_Device, m_Cache.GetRootSignature(), NShadowMapCascade::Samplers, samplers)) == nullptr) return false;
 
-	vec3 lightPos = { 6.18, 20, -19 };
+	vec3 lightPos = { 6.18, 15, -19 };
 	SetCubeProjection(false);
 	m_ViewportProvider.Get().lightDir = normalize(-lightPos);
 

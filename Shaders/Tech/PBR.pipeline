@@ -27,61 +27,7 @@ struct PixelIn
 	float3 posV    : Position1;
 	float3 normal  : Normal0;
 };
-#define PI 3.14159
-//reflectance 
-//f = DGF/(4(n*v)(n*l));
-// h = normalize(v+l)
-//normal distribution D
-float D_GGX(float3 n, float3 h, float roughness)
-{
-	//Trowbridge-Reitz r*r/(PI * ((n*h)^2 * (r*r-1) + 1)^2);
-	//+ Lagrange's identity |a x b|^2 = |a|^2 * |b|^2  - (a*b)^2
-	float NoH = dot(n, h);
-	float3 NxH = cross(n,h);
-	float a = NoH*roughness;
-	float k = roughness/(dot(NxH,NxH) +a*a);
-	return k*k/PI;
-}
-// Smith-GGX geometry + Heitz microfacet height
-// this func = G/(4(n*v)(*l))
-// V =  0.5( (n*l)sqrt((n*v)^2 * (1-r*r) +r*r) + (n*v)sqrt((n*l)^2 * (1-r*r) +r*r))
-float V_GGX(float NoL, float NoV, float roughness)
-{
-	float a2 = roughness*roughness;
-	float GGXV = NoL*sqrt(NoV*NoV*(1-a2)+a2);
-	float GGXL = NoV*sqrt(NoL*NoL*(1-a2)+a2);
-	return 0.5/(GGXV+GGXL);
-}
-//FresnelSchlick
-//f0 - reflectance rate at 0 angle
-//F = f0 +(1-f0)(1-v*h)^5
-float3 FresnelSchlick(float VoH, float3 f0)
-{
-	float k = pow(1 - VoH,5);
-	return k + f0*(1-k);	
-}
-//k for diffuse to set energy preserving; more complex way than 1-fresnel
-float FresnelSchlickD(float _dot, float f0, float f90)
-{
-	return f0+(f90-f0)*pow(1-_dot,5); 
-}
-float  FD_Burley(float NoL, float NoV, float LoH, float roughness)
-{
-	float f90 = 0.5 + 2*roughness*LoH*LoH;
-	return FresnelSchlickD(NoL, 1, f90)*FresnelSchlickD(NoV, 1, f90) / PI;
-}
-float3 BRDF(float3 baseColor, float3 v, float3 l, float3 n, float roughness, float metallness, float reflectance/*0.5*/)
-{
-	float3 diffuseColor = baseColor*(1-metallness);
-	float3 fresnelColor = 0.16*reflectance*reflectance*(1-metallness)+ baseColor*metallness;
-	float3 h = normalize(v+l);
-	float NoL = clamp(dot(n,l), 0,1);
-	float NoV = clamp(dot(n,v), 0,1);
-	float LoH = clamp(dot(l,h), 0,1);
-	float VoH = clamp(dot(v,h), 0,1);
-	float a = roughness*roughness;
-	return FD_Burley(NoL, NoV, LoH, a)*diffuseColor + D_GGX(n,h,a)*V_GGX(NoL,NoV,a)*FresnelSchlick(VoH, fresnelColor);
-}
+#include "PBRMath.h" 
 [Rootsig]
 ROOT_BEGIN
 	RT_BEGIN Resources
@@ -102,12 +48,13 @@ void main(VertexIn vert, out PixelIn res)
 [Pixel: PS]
 #define ambient 0.3
 void main(PixelIn pix, out float4 outFragColor: SV_TARGET)
-{
+{ 
 	float3 l = -ViewportConst.lightDir;
 	float3 n = normalize(pix.normal);
 	float3 v = ViewportConst.camPos - pix.posW;
 	float k = clamp(dot(l,n),0,1);
-	outFragColor.rgb =  BRDF(ModelConstPBR.baseColor,  v,l,n,ModelConstPBR.material.x,ModelConstPBR.material.y,ModelConstPBR.material.z)*k;
-	outFragColor.a = 1;
-	
+	float3 color =  BRDF(ModelConstPBR.baseColor,  v,l,n,ModelConstPBR.material.x,ModelConstPBR.material.y,ModelConstPBR.material.z, true, false)*k;
+	color  = color  / (color  + 1);
+    color = pow(color, 1.0/2.2);  
+	outFragColor = float4(color, 1);
 } 

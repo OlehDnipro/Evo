@@ -125,6 +125,15 @@ struct SPerFrame
 	float3 camPos;
 	float pad1;
 };
+struct SPBRModel
+{
+	float4x4 model;
+	float4 material;
+	//roughness, metallness, reflectance,..
+	float3 baseColor;
+	float pad;
+	static const char* GetName() { return "ModelConstPBR"; }
+};
 class CModelParameterProvider : public CParameterProviderBase<CModelParameterProvider>
 {
 public:

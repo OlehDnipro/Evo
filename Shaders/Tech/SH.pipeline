@@ -1,0 +1,148 @@
+struct ShBaseCoef
+{
+	float coef[9];
+	int face;
+	int2 pad;
+};
+struct ShPoly
+{
+	int coef[9];// multiplied by 1000 000
+	int count;
+	int2 pad;
+};
+struct ShPoly3Channel
+{ 
+	ShBaseCoef channels[3];
+};
+[Permutations]
+PERMUTATIONS_BEGIN
+	MUTE ComputeBase COMPUTE_BASE
+	MUTE ComputeTex COMPUTE_TEX
+PERMUTATIONS_END
+[Rootsig]
+ROOT_BEGIN
+
+	ST_BEGIN Samplers
+		SAMPLER		SamplerState ColorSampler;
+	ST_END
+	RT_BEGIN Resources
+		CBUFFER ShPoly3Channel  SHAverage;
+		TEXTURE Texture2DArray<float4> EnvTex;
+		RWTEXTURE RWTexture2DArray<float4> OutTex;
+
+		RWSTRUCTUREDBUFFER RWStructuredBuffer<ShBaseCoef> ShBase;
+		RWSTRUCTUREDBUFFER RWStructuredBuffer<ShPoly> ShSum;
+	RT_END
+ROOT_END
+[Compute: CS]
+
+#define Face_Top 0   
+#define Face_Bottom 1  
+#define Face_Back 2 
+#define Face_Forward 3  
+#define Face_Left 4 
+#define Face_Right 5  
+groupshared ShPoly ShSumTemp[3];
+[numthreads(32, 32, 8)]
+void main(uint3 DTid : SV_DispatchThreadID) 
+{
+	uint2 res= uint2(1024,1024);
+	uint x = DTid.x;
+	uint y = DTid.y;
+	uint face = DTid.z;
+	if(x >= res.x || y >= res.y || face >=6 )
+		return;
+#ifdef COMPUTE_BASE	
+	ShSumTemp[0] = (ShPoly)0;
+	ShSumTemp[1] = (ShPoly)0;
+	ShSumTemp[2] = (ShPoly)0;
+
+	GroupMemoryBarrierWithGroupSync();
+	// Calculate directional vector  
+   // TODO: Correct direction to sample center of texel.  
+   float3 direction = normalize(float3((float)x / (float)(res.x - 1) * 2.0f - 1.0f, (float)y / (float)(res.y - 1) * 2.0f - 1.0f, -1.0f));  
+   
+   // Rotate to match cubemap face  
+   switch (face)  
+   {  
+	 case Face_Back:  
+	 {  
+	   direction[0] *= -1.0f;  
+	   direction[2] *= -1.0f;  
+	 }break;  
+	 case Face_Left:  
+	 {  
+	   float const temp = direction[0];  
+	   direction[0] = direction[2];  
+	   direction[2] = -temp;  
+	 } break;  
+	 case Face_Right:  
+	 {  
+	   float const temp = direction[0];  
+	   direction[0] = -direction[2];  
+	   direction[2] = temp;  
+	 } break;  
+	 case Face_Top:  
+	 {  
+	   float const temp = direction[1];  
+	   direction[1] = -direction[2];  
+	   direction[2] = temp;  
+	 } break;  
+	 case Face_Bottom:  
+	 {  
+	   float const temp = direction[1];  
+	   direction[1] = direction[2];  
+	   direction[2] = -temp;  
+	 } break;  
+	 default:  
+	   break;  
+   } 
+   
+   uint index = x + y*res.x + face*res.x*res.y;
+
+	ShBaseCoef shTemp;
+   shTemp.coef[0] = 0.282095;  
+   shTemp.coef[1] = 0.488603 * direction[1];  
+   shTemp.coef[2] = 0.488603 * direction[2];  
+   shTemp.coef[3] = 0.488603 * direction[0];  
+   shTemp.coef[4] = 1.092548 * direction[0] * direction[1];  
+   shTemp.coef[5] = 1.092548 * direction[1] * direction[2];  
+   shTemp.coef[6] = 0.315392 * (3.0 * direction[2] * direction[2] - 1.0);  
+   shTemp.coef[7] = 1.092548 * direction[0] * direction[2];  
+   shTemp.coef[8] = 0.546274 * (direction[0] * direction[0] - direction[1] * direction[1]);  
+   ShBase[index] =  shTemp;
+	float4 color = EnvTex.SampleLevel(ColorSampler, int3(x,y,face),0);
+	[unroll]
+	for(int i = 0; i < 9; i++)
+	{
+		for(int ch = 0; ch < 3; ch++)
+		{
+			InterlockedAdd(ShSumTemp[ch].coef[i], (int)1000000*color[ch]*shTemp.coef[i]);
+			InterlockedAdd(ShSumTemp[ch].count, 1);
+		}
+	}
+	GroupMemoryBarrierWithGroupSync();
+	uint2 sum_size = uint2(res.x / 32 + 1, res.y / 32 + 1);
+	uint buf_size = sum_size.x*sum_size.y * 6;
+	uint sum_index = x / 32 + ( y / 32 )*sum_size.x + face*sum_size.x*sum_size.y;
+	for(int ch = 0; ch < 3; ch++)
+	{
+		ShSum[ch*buf_size + sum_index] = ShSumTemp[ch];
+	}
+#else
+	float4 color = EnvTex.SampleLevel(ColorSampler, int3(x,y,face),0);
+	float3 outColor = float3(0,0,0);
+	[unroll]
+	for(int i = 0; i < 9; i++)
+	{
+		for(int ch = 0; ch < 3; ch++)
+		{
+			outColor[ch] += SHAverage.channels[ch].coef[i]*color[ch];
+		}
+	}
+	OutTex[uint3(face,x,y)] = float4(outColor,1 );
+	
+#endif
+   
+}
+

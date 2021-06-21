@@ -193,10 +193,13 @@ bool CWaterTask::CreateResources(Device device)
 		const SSamplerDesc samplers[] = { { FILTER_TRILINEAR, 1, AM_WRAP, AM_WRAP, AM_WRAP, ALWAYS } };
 		if ((m_SamplerTable = CreateSamplerTable(m_Device, m_Cache.GetRootSignature(), NWaterdrop::Samplers, samplers)) == nullptr)
 			return false;
-
+		m_WaterProvider.GetPBR().baseColor = float3(0.3, 0.4, 1.0);
+		m_WaterProvider.GetPBR().material = float4(0.35*0.35, 0, 0.35, 0);
 		m_Camera.ProjectPerspective(PI / 4, 720.0f / 1280.0f, 0.5, 20);
 		return true;
 	}
+
+
 	return false;
 }
 

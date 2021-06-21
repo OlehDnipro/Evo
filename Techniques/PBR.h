@@ -3,15 +3,7 @@ struct SphereVertex
 {
 	float3 pos;
 };
-struct SPBRModel
-{
-	float4x4 model;
-	float4 material;
-	//roughness, metallness, reflectance,..
-	float3 baseColor;
-	float pad;
-	static const char* GetName() { return "ModelConstPBR"; }
-};
+
 class CPBRModelParameterProvider : public CParameterProviderBase<CPBRModelParameterProvider>
 {
 public:

@@ -120,10 +120,10 @@ void CSphereGeometry::Draw(Context context, CShaderCache& cache, int resources_s
 			mtx.rows[0].x = 0.1;
 			mtx.rows[1].y = 0.1;
 			mtx.rows[2].z = 0.1;
-			mtx = mul(translate(float3(0.25 * i, 1 - 0.25 * j, 0)), mtx);
+			mtx = mul(translate(float3(3 + 0.25 * i, 0, 2.5 - 0.25 * j)), mtx);
 			m_Provider.Get().model = mtx;
 			m_Provider.Get().material = float4(0.1 + 0.2 * i, 0.1 + 0.2 * j, 0.75, 0);
-			m_Provider.Get().baseColor = float3(1, 0, 0);
+			m_Provider.Get().baseColor = float3(0.2, 0, 1);
 			{
 				IParameterProvider* prov[] = { &m_Provider };
 
@@ -182,7 +182,7 @@ void CSphereGeometry::Create(Device device)
 
 CSphereGeometry::~CSphereGeometry()
 {
-	DestroyBuffer(m_Device, m_VB);
+//	DestroyBuffer(m_Device, m_VB);
 	DestroyVertexSetup(m_Device, m_VertexSetup);
 }
 
@@ -234,7 +234,7 @@ void CPBRTask::SetCameraLookAt(vec3 eye, vec3 target, vec3 up)
 {
 	CRenderTask::SetCameraLookAt(eye, target, up);
 	m_ViewportProvider.Get().view = m_Camera.GetViewTransform();
-	vec3 lightPos = { 6.18, 20, -19 };
+	vec3 lightPos = { 6.18, 15, -19 };
 	m_ViewportProvider.Get().lightDir = normalize(-lightPos);
 	m_ViewportProvider.Get().projection = m_Camera.ProjectPerspective(PI / 4, 720.0f / 1280.0f, 0.5, 20);
 	m_ViewportProvider.Get().camPos = eye;
