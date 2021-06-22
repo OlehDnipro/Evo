@@ -65,6 +65,11 @@ void CComputeSHTask::Execute(Context context)
 	SetPipeline(context, m_PipelineBase);
 	SetComputeSamplerTable(context, NSH::Samplers, m_SamplerTable);
 
+	Barrier(context, { { m_Provider.m_OutTex , EResourceState::RS_UNORDERED_ACCESS } });
+	Barrier(context, { { m_Provider.m_SumBuffer , EResourceState::RS_UNORDERED_ACCESS } });
+	Barrier(context, { { m_Provider.m_BaseBuffer , EResourceState::RS_UNORDERED_ACCESS } });
+
+
 	m_Provider.PrepareConstantBuffer(context, m_Provider.m_ModelConst.GetPtr());
 	m_Cache.GatherParameters({ 
 								*m_Provider.m_ModelConst.GetPtr(),
@@ -103,7 +108,7 @@ void CComputeSHTask::InitPipeline(Context context)
 		p_params.m_RootSignature = m_Cache.GetRootSignature();
 		p_params.m_CS = NSH::CSComputeTex;
 
-		m_PipelineBase = CreatePipeline(m_Device, p_params);
+		m_PipelineTex = CreatePipeline(m_Device, p_params);
 	}
 }
 
