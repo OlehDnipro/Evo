@@ -226,7 +226,9 @@ public:
 		cube_params.m_ShaderResource = true;
 		cube_params.m_Slices = 2;
 		m_CubeMap = CreateTexture(m_Device, cube_params);
+		cube_params.m_UnorderedAccess = true;
 		cube_params.m_Slices = 1;
+		cube_params.m_Name = "SphericalHarmonicsDiffuseMap";
 		m_SHCubeMap = CreateTexture(m_Device, cube_params);
 
 		m_ComputeSHTask.SetTextures({ m_CubeMap, {1,-1,-1} }, m_SHCubeMap);
@@ -300,7 +302,7 @@ public:
 		UpdateCamera();
 
 		m_Poly.UpdatePos(0.025, float2(0, 0));
-		m_WaterTask.SetTextures(m_CubeMap, m_RingDrop[0], m_Reflection, m_NormalTile);
+		m_WaterTask.SetTextures(/*m_SHCubeMap*/m_CubeMap, m_RingDrop[0], m_Reflection, m_NormalTile);
 		m_WaterTask.SetBox(eye, vec3(5.5, 1.75, 4), vec3(2, -0.25, -0.5), vec3(8.5, 1.75, 7), vec3(-1, -0.25, -3.5));
 		m_WaterTask.SetSpeed(WATERTEX_SPEED);
 		m_WaterTask.SetWaveOffset(WAVE_OFFSET);
@@ -369,7 +371,7 @@ public:
 		if (!SHReady)
 		{
 			m_ComputeSHTask.Execute(context, CComputeSHTask::Pass::ComputeTex);
-//			SHReady = true;
+			SHReady = true;
 		}
 		static uint frame = 0;
 		float depthFar[2] = { 1,0 };

@@ -136,26 +136,30 @@ void main(uint3 DTid : SV_DispatchThreadID)
 		ShSum[_ch*buf_size + sum_index] = ShSumTemp[_ch];
 	}
 #else
-	float4 color = EnvTex.SampleLevel(ColorSampler, int3(x,y,face),0);
+   uint index = x + y*res.x + face*res.x*res.y;
+
 	float3 outColor = float3(0,0,0);
+	ShBaseCoef shDir = ShBase[index];
+
 	[unroll]
 	for(int ch = 0; ch < 3; ch++)
 	{
-		outColor[ch] += SHAverage.channels[ch].coef[0].x*color[ch];
-		outColor[ch] += SHAverage.channels[ch].coef[0].y*color[ch];
-		outColor[ch] += SHAverage.channels[ch].coef[0].z*color[ch];
+		ShBaseCoef curCoef = SHAverage.channels[ch];
+		outColor[ch] += curCoef.coef[0].x*shDir.coef[0].x;
+		outColor[ch] += curCoef.coef[0].y*shDir.coef[0].y;
+		outColor[ch] += curCoef.coef[0].z*shDir.coef[0].z;
 
-		outColor[ch] += SHAverage.channels[ch].coef[0].w*color[ch];
-		outColor[ch] += SHAverage.channels[ch].coef[1].x*color[ch];
-		outColor[ch] += SHAverage.channels[ch].coef[1].y*color[ch];
+		outColor[ch] += curCoef.coef[0].w*shDir.coef[0].w;
+		outColor[ch] += curCoef.coef[1].x*shDir.coef[1].x;
+		outColor[ch] += curCoef.coef[1].y*shDir.coef[1].y;
 
-		outColor[ch] += SHAverage.channels[ch].coef[1].z*color[ch];
-		outColor[ch] += SHAverage.channels[ch].coef[1].w*color[ch];
-		outColor[ch] += SHAverage.channels[ch].coef[2].x*color[ch];
+		outColor[ch] += curCoef.coef[1].z*shDir.coef[1].z;
+		outColor[ch] += curCoef.coef[1].w*shDir.coef[1].w;
+		outColor[ch] += curCoef.coef[2].x*shDir.coef[2].x;
 
 	}
 	
-	OutTex[uint3(x,y,face)] = float4(1,0,1,1 );
+	OutTex[uint3(x,y, face)] = float4(outColor,1 );
 	
 #endif
    
