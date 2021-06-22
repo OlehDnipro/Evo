@@ -1,14 +1,10 @@
 struct ShBaseCoef
 {
-	float coef[9];
-	int face;
-	int2 pad;
+	float4 coef[3];
 };
 struct ShPoly
 {
-	int coef[9];// multiplied by 1000 000
-	int count;
-	int2 pad;
+	int4 coef[3];// multiplied by 1000 000
 };
 struct ShPoly3Channel
 { 
@@ -101,46 +97,65 @@ void main(uint3 DTid : SV_DispatchThreadID)
    uint index = x + y*res.x + face*res.x*res.y;
 
 	ShBaseCoef shTemp;
-   shTemp.coef[0] = 0.282095;  
-   shTemp.coef[1] = 0.488603 * direction[1];  
-   shTemp.coef[2] = 0.488603 * direction[2];  
-   shTemp.coef[3] = 0.488603 * direction[0];  
-   shTemp.coef[4] = 1.092548 * direction[0] * direction[1];  
-   shTemp.coef[5] = 1.092548 * direction[1] * direction[2];  
-   shTemp.coef[6] = 0.315392 * (3.0 * direction[2] * direction[2] - 1.0);  
-   shTemp.coef[7] = 1.092548 * direction[0] * direction[2];  
-   shTemp.coef[8] = 0.546274 * (direction[0] * direction[0] - direction[1] * direction[1]);  
+   shTemp.coef[0].x = 0.282095;  
+   shTemp.coef[0].y = 0.488603 * direction[1];  
+   shTemp.coef[0].z = 0.488603 * direction[2];  
+   shTemp.coef[0].w = 0.488603 * direction[0];  
+   shTemp.coef[1].x = 1.092548 * direction[0] * direction[1];  
+   shTemp.coef[1].y = 1.092548 * direction[1] * direction[2];  
+   shTemp.coef[1].z = 0.315392 * (3.0 * direction[2] * direction[2] - 1.0);  
+   shTemp.coef[1].w = 1.092548 * direction[0] * direction[2];  
+   shTemp.coef[2].x = 0.546274 * (direction[0] * direction[0] - direction[1] * direction[1]);  
    ShBase[index] =  shTemp;
 	float4 color = EnvTex.SampleLevel(ColorSampler, int3(x,y,face),0);
-	[unroll]
-	for(int i = 0; i < 9; i++)
+	[unroll]	
+	for(int ch = 0; ch < 3; ch++)
 	{
-		for(int ch = 0; ch < 3; ch++)
-		{
-			InterlockedAdd(ShSumTemp[ch].coef[i], (int)1000000*color[ch]*shTemp.coef[i]);
-			InterlockedAdd(ShSumTemp[ch].count, 1);
-		}
+
+		InterlockedAdd(ShSumTemp[ch].coef[0].x, (int)1000000*color[ch]*shTemp.coef[0].x);
+		InterlockedAdd(ShSumTemp[ch].coef[0].y, (int)1000000*color[ch]*shTemp.coef[0].y);
+		InterlockedAdd(ShSumTemp[ch].coef[0].z, (int)1000000*color[ch]*shTemp.coef[0].z);
+
+		InterlockedAdd(ShSumTemp[ch].coef[0].w, (int)1000000*color[ch]*shTemp.coef[0].w);
+		InterlockedAdd(ShSumTemp[ch].coef[1].x, (int)1000000*color[ch]*shTemp.coef[1].x);
+		InterlockedAdd(ShSumTemp[ch].coef[1].y, (int)1000000*color[ch]*shTemp.coef[1].y);
+
+		InterlockedAdd(ShSumTemp[ch].coef[1].z, (int)1000000*color[ch]*shTemp.coef[1].z);
+		InterlockedAdd(ShSumTemp[ch].coef[1].w, (int)1000000*color[ch]*shTemp.coef[1].w);
+		InterlockedAdd(ShSumTemp[ch].coef[2].x, (int)1000000*color[ch]*shTemp.coef[2].x);
+
+		InterlockedAdd(ShSumTemp[ch].coef[2].y, 1);
 	}
+	
 	GroupMemoryBarrierWithGroupSync();
 	uint2 sum_size = uint2((res.x - 1) / 32 + 1, (res.y - 1) / 32 + 1);
 	uint buf_size = sum_size.x*sum_size.y * 6;
 	uint sum_index = x / 32 + ( y / 32 )*sum_size.x + face*sum_size.x*sum_size.y;
-	for(int ch = 0; ch < 3; ch++)
+	for(int _ch = 0; _ch < 3; _ch++)
 	{
-		ShSum[ch*buf_size + sum_index] = ShSumTemp[ch];
+		ShSum[_ch*buf_size + sum_index] = ShSumTemp[_ch];
 	}
 #else
 	float4 color = EnvTex.SampleLevel(ColorSampler, int3(x,y,face),0);
 	float3 outColor = float3(0,0,0);
 	[unroll]
-	for(int i = 0; i < 9; i++)
+	for(int ch = 0; ch < 3; ch++)
 	{
-		for(int ch = 0; ch < 3; ch++)
-		{
-			outColor[ch] += SHAverage.channels[ch].coef[i]*color[ch];
-		}
+		outColor[ch] += SHAverage.channels[ch].coef[0].x*color[ch];
+		outColor[ch] += SHAverage.channels[ch].coef[0].y*color[ch];
+		outColor[ch] += SHAverage.channels[ch].coef[0].z*color[ch];
+
+		outColor[ch] += SHAverage.channels[ch].coef[0].w*color[ch];
+		outColor[ch] += SHAverage.channels[ch].coef[1].x*color[ch];
+		outColor[ch] += SHAverage.channels[ch].coef[1].y*color[ch];
+
+		outColor[ch] += SHAverage.channels[ch].coef[1].z*color[ch];
+		outColor[ch] += SHAverage.channels[ch].coef[1].w*color[ch];
+		outColor[ch] += SHAverage.channels[ch].coef[2].x*color[ch];
+
 	}
-	OutTex[uint3(face,x,y)] = float4(outColor,1 );
+	
+	OutTex[uint3(x,y,face)] = float4(1,0,1,1 );
 	
 #endif
    

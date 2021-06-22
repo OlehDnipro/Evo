@@ -34,9 +34,15 @@ public:
 class CComputeSHTask 
 {
 public:
+	enum Pass
+	{
+		ComputeBase,
+		ComputeTex
+	};
 	 bool CreateResources(Device device);
-	 void Execute(Context context);
+	 void Execute(Context context, Pass pass);
 	 void SetTextures(SResourceDesc env, SResourceDesc out);
+	
 	 ~CComputeSHTask();
 private:
 	Pipeline m_PipelineBase, m_PipelineTex;

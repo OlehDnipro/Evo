@@ -58,27 +58,58 @@ bool CComputeSHTask::CreateResources(Device device)
 	m_SumBufferReadback = CreateBuffer(m_Device, params);
 }
 
-void CComputeSHTask::Execute(Context context)
+void CComputeSHTask::Execute(Context context, Pass pass)
 {
+	if (pass == Pass::ComputeTex)
+	{
+		SMapBufferParams params(context, m_SumBufferReadback);
+
+		ShPoly* perPixelArea = (ShPoly*)MapBuffer(params);
+		ShPoly3Channel& result = m_Provider.m_ModelConst.Get();
+		uint count;
+		memset(&result, 0, sizeof(ShPoly3Channel));
+		if (perPixelArea)
+		{
+			for (int ch = 0; ch < 3; ch++)
+			{
+				count = 0;
+				for (int area = 0; area < m_Provider.m_SumBufferChannelSize; area++)
+				{
+					count += perPixelArea->count;
+					for (int i = 0; i < 9; i++)
+					{
+						result.channels[ch].coef[i] += perPixelArea->coef[i] / 1000000.0f;
+					}
+					perPixelArea++;
+				}
+				for (int i = 0; i < 9; i++)
+				{
+					result.channels[ch].coef[i] *= (4 * PI / count);
+				}
+			}
+			UnmapBuffer(params);
+		}
+	}
+
 	InitPipeline(context);
 	SetRootSignature(context, m_Cache.GetRootSignature());
-	SetPipeline(context, m_PipelineBase);
+
+	SetPipeline(context, pass == Pass::ComputeBase? m_PipelineBase: m_PipelineTex);
+
 	SetComputeSamplerTable(context, NSH::Samplers, m_SamplerTable);
 
 	Barrier(context, { { m_Provider.m_OutTex , EResourceState::RS_UNORDERED_ACCESS } });
 	Barrier(context, { { m_Provider.m_SumBuffer , EResourceState::RS_UNORDERED_ACCESS } });
-	Barrier(context, { { m_Provider.m_BaseBuffer , EResourceState::RS_UNORDERED_ACCESS } });
-
-
+	int s = sizeof(int);
 	m_Provider.PrepareConstantBuffer(context, m_Provider.m_ModelConst.GetPtr());
-	m_Cache.GatherParameters({ 
+	m_Cache.GatherParameters({
 								*m_Provider.m_ModelConst.GetPtr(),
 								m_Provider.m_EnvTex,
 								m_Provider.m_OutTex,
 								m_Provider.m_BaseBuffer,
 								m_Provider.m_SumBuffer,
-							 },		
-							NSH::Resources, 0);
+		},
+		NSH::Resources, 0);
 
 	ResourceTable rt = CreateResourceTable(GetDevice(context), m_Cache.GetRootSignature(), NSH::Resources, nullptr, 0, context);
 
@@ -87,8 +118,27 @@ void CComputeSHTask::Execute(Context context)
 	SetComputeResourceTable(context, NSH::Resources, rt);
 
 	DestroyResourceTable(GetDevice(context), rt);
+	if (pass == Pass::ComputeBase)
+	{
+		Barrier(context, { { m_Provider.m_BaseBuffer , EResourceState::RS_UNORDERED_ACCESS } });
 
-	Dispatch(context,( m_Provider.m_TexSize.x - 1) / 32 + 1, (m_Provider.m_TexSize.y - 1) / 32 + 1, 6);
+		Dispatch(context, (m_Provider.m_TexSize.x - 1) / 32 + 1, (m_Provider.m_TexSize.y - 1) / 32 + 1, 6);
+
+		Barrier(context, { { m_Provider.m_SumBuffer , EResourceState::RS_TRANSFER_SRC } });
+
+		Barrier(context, { { m_SumBufferReadback , EResourceState::RS_TRANSFER_DST } });
+
+		CopyBuffer(context, m_SumBufferReadback, (Buffer)m_Provider.m_SumBuffer.m_Resource);
+
+		Barrier(context, { { m_SumBufferReadback , EResourceState::RS_TRANSFER_SRC } });
+	}
+	else
+	{
+		Barrier(context, { { m_Provider.m_BaseBuffer , EResourceState::RS_SHADER_READ } });
+
+		Dispatch(context, (m_Provider.m_TexSize.x - 1) / 32 + 1, (m_Provider.m_TexSize.y - 1) / 32 + 1, 6);
+
+	}
 	
 }
 

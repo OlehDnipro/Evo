@@ -305,6 +305,8 @@ public:
 		m_WaterTask.SetSpeed(WATERTEX_SPEED);
 		m_WaterTask.SetWaveOffset(WAVE_OFFSET);
 		m_Shadows.SetCubeProjection(false);
+		m_ComputeSHTask.Execute(context, CComputeSHTask::Pass::ComputeBase);
+
 	}
 	~EvoApp()
 	{
@@ -363,8 +365,13 @@ public:
 
 	void DrawFrame(Context context, uint buffer_index)
 	{
+		static bool SHReady = false;
+		if (!SHReady)
+		{
+			m_ComputeSHTask.Execute(context, CComputeSHTask::Pass::ComputeTex);
+//			SHReady = true;
+		}
 		static uint frame = 0;
-		m_ComputeSHTask.Execute(context);
 		float depthFar[2] = { 1,0 };
 		float gray[4] = { 0.5, 0.5, 0.5, 0.5 };
 		float black[4] = { 0,0,0,0 };
