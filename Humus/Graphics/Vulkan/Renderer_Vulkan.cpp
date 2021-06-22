@@ -1418,7 +1418,7 @@ void DestroyTexture(Device device, Texture& texture)
 		texture = VK_NULL_HANDLE;
 	}
 }
-void UpdateResourceTable(Device device, RootSignature root, uint32 slot, ResourceTable table,  const SResourceDesc* resources, uint offset, uint count)
+void UpdateResourceTable(Device device, RootSignature root, uint32 slot, ResourceTable table,  const SResourceDesc* resources, uint offset, uint count, const uint8* reflectionFlags)
 {
 	const SRootSignature::SRootSlot& root_slot = root->m_Slots[slot];
 	VkResult res;
@@ -1450,7 +1450,11 @@ void UpdateResourceTable(Device device, RootSignature root, uint32 slot, Resourc
 			descriptor_write.descriptorType = (item.m_Type == TEXTURE) ? VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE : VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
 			descriptor_write.pImageInfo = &image_info;
 			descriptor_write.pBufferInfo = VK_NULL_HANDLE;
-			image_info.imageView = AcquireTextureSubresourceView(device, resources[i], item.m_Type == RESTYPE_TEXTURE ? TexViewUsage::SRV : TexViewUsage::UAV);
+			TextureViewFlags viewFlags = ViewDefault;
+			if (reflectionFlags && (reflectionFlags[i] & Refl_Flag_Array) && !(reflectionFlags[i] & Refl_Flag_Cube) 
+				&& (texture->m_Type == TEX_CUBE || texture->m_Type == TEX_CUBE_ARRAY))
+				viewFlags = CubeAsArray;
+			image_info.imageView = AcquireTextureSubresourceView(device, resources[i], item.m_Type == TEXTURE ? TexViewUsage::SRV : TexViewUsage::UAV, viewFlags);
 			image_info.imageLayout = (item.m_Type == TEXTURE) ? (IsDepthFormat(texture->m_Format)? VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL:VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL )
                                                                  : VK_IMAGE_LAYOUT_GENERAL;
 			break;

@@ -79,9 +79,12 @@ void ShadowMapCascade::SetCameraLookAt(vec3 eye, vec3 target, vec3 up)
 }
 
 
-const char* GetResourceName(uint slot, uint binding)
+SRootResourceAttrs GetResourceAttrs(uint slot, uint binding)
 {
-	return NShadowMapCascade::RootItemNames[slot][binding];
+	SRootResourceAttrs attrs;
+	attrs.name = NShadowMapCascade::RootItemNames[slot][binding];
+	attrs.type = NShadowMapCascade::RootItemTypes[slot][binding];
+	return attrs;
 }
 
 void ShadowMapCascade::SetCubeProjection(bool cube)
@@ -109,7 +112,7 @@ void ShadowMapCascade::SetPlanarReflectionParam(float4x4 mtx, float4 plane)
 bool ShadowMapCascade::CreateResources(Device device)
 {
 	m_Device = device;
-	m_Cache.CreateRootSignature(m_Device, NShadowMapCascade::RootSig, &GetResourceName);
+	m_Cache.CreateRootSignature(m_Device, NShadowMapCascade::RootSig, &GetResourceAttrs);
 	
 	const SSamplerDesc samplers[] = { { FILTER_TRILINEAR, 1, AM_WRAP, AM_WRAP, AM_WRAP, ALWAYS }, { FILTER_LINEAR, 1, AM_WRAP, AM_WRAP, AM_WRAP, LESS } };
 	if ((m_SamplerTable = CreateSamplerTable(m_Device, m_Cache.GetRootSignature(), NShadowMapCascade::Samplers, samplers)) == nullptr) return false;

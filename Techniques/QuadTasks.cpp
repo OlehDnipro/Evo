@@ -179,16 +179,19 @@ void CWaterDropTask::InitPipeline(Context context)
 		m_Pipeline = CreatePipeline(m_Device, p_params);
 	}
 }
-const char* GetWaterResourceName(uint slot, uint binding)
+SRootResourceAttrs GetWaterResourceAttrs(uint slot, uint binding)
 {
-	return NWater::RootItemNames[slot][binding];
+	SRootResourceAttrs attrs;
+	attrs.name = NWater::RootItemNames[slot][binding];
+	attrs.type = NWater::RootItemTypes[slot][binding];
+	return attrs;
 }
 
 bool CWaterTask::CreateResources(Device device)
 {
 	m_Device = device;
 
-	if (m_Cache.CreateRootSignature(m_Device, NWater::RootSig, GetWaterResourceName))
+	if (m_Cache.CreateRootSignature(m_Device, NWater::RootSig, GetWaterResourceAttrs))
 	{
 		const SSamplerDesc samplers[] = { { FILTER_TRILINEAR, 1, AM_WRAP, AM_WRAP, AM_WRAP, ALWAYS } };
 		if ((m_SamplerTable = CreateSamplerTable(m_Device, m_Cache.GetRootSignature(), NWaterdrop::Samplers, samplers)) == nullptr)

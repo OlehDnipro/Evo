@@ -100,10 +100,14 @@ void GenerateSphereMesh(SphereVertex*& vertices, uint16*& indices, uint& out_ver
 	indices = new uint16[m_Indices.size()];
 	memcpy(indices, m_Indices.data(), m_Indices.size() * sizeof(uint16));
 }
-const char* GetResourceNamePBR(uint slot, uint binding)
+SRootResourceAttrs GetResourceAttrsPBR(uint slot, uint binding)
 {
-	return NPBR::RootItemNames[slot][binding];
+	SRootResourceAttrs attrs;
+	attrs.name = NPBR::RootItemNames[slot][binding];
+	attrs.type = NPBR::RootItemTypes[slot][binding];
+	return attrs;
 }
+
 void CSphereGeometry::DefineVertexFormat(vector<AttribDesc>& format)
 {
 	format.push_back({ 0, VF_FLOAT3, "Position" }); 
@@ -189,7 +193,7 @@ CSphereGeometry::~CSphereGeometry()
 bool CPBRTask::CreateResources(Device device)
 {
     m_Device = device;
-    return  m_Cache.CreateRootSignature(m_Device, NPBR::RootSig, &GetResourceNamePBR);
+    return  m_Cache.CreateRootSignature(m_Device, NPBR::RootSig, &GetResourceAttrsPBR);
 }
 
 void CPBRTask::Draw(Context context)

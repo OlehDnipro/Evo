@@ -21,10 +21,17 @@ CComputeSHTask::~CComputeSHTask()
 //	DestroyBuffer(m_Device, (Buffer)m_Provider.m_SumBuffer.m_Resource);
 //	DestroyBuffer(m_Device, (Buffer)m_Provider.m_BaseBuffer.m_Resource);
 }
+SRootResourceAttrs GetResourceAttrsSH(uint slot, uint binding)
+{
+	SRootResourceAttrs attrs;
+	attrs.name = NSH::RootItemNames[slot][binding];
+	attrs.type = NSH::RootItemTypes[slot][binding];
+	return attrs;
+}
 bool CComputeSHTask::CreateResources(Device device)
 {
     m_Device = device;
-    bool root =  m_Cache.CreateRootSignature(m_Device, NSH::RootSig, nullptr);
+    bool root =  m_Cache.CreateRootSignature(m_Device, NSH::RootSig, GetResourceAttrsSH);
 	if (!root)
 		return false;
 

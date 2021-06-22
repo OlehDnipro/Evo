@@ -331,7 +331,12 @@ struct SBufferRangeDesc
 	uint offset;
 	uint size;
 };
-
+enum EShaderReflectionFlags :uint8
+{
+	Refl_Flag_None = 0,
+	Refl_Flag_Cube = 1,
+	Refl_Flag_Array = 2,
+};
 struct SResourceDesc
 {
 	SResourceDesc() = default;
@@ -350,7 +355,7 @@ struct SResourceDesc
 	SBufferRangeDesc m_bufRange;
 
 };
-void UpdateResourceTable(Device device, RootSignature root, uint32 slot, ResourceTable table, const SResourceDesc* resources, uint offset, uint count);
+void UpdateResourceTable(Device device, RootSignature root, uint32 slot, ResourceTable table, const SResourceDesc* resources, uint offset, uint count, const uint8* reflectionFlags = nullptr );
 no_inline ResourceTable CreateResourceTable(Device device, RootSignature root, uint32 slot, const SResourceDesc* resources, uint count, Context onframe = nullptr);
 template<int N> force_inline ResourceTable CreateResourceTable(Device device, RootSignature root, uint32 slot, const SResourceDesc(&resources)[N], Context onframe = nullptr) { return CreateResourceTable(device, root, slot, resources, N, onframe); }
 void DestroyResourceTable(Device device, ResourceTable& table);

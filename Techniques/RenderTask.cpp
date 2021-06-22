@@ -52,14 +52,24 @@ void CShaderCache::FindRootResource(ItemType type, uint slot, uint binding, uint
 		TableUpdate update;
 		update.slot = slot;
 		update.m_Descriptors.resize(first_item_of_table_with_size);
+		update.m_ReflectionFlags.resize(first_item_of_table_with_size);
+		for (uint8& flag : update.m_ReflectionFlags)
+			flag = Refl_Flag_None;
 		cache->m_TableUpdates.push_back(update);
 	}
-	if (cache->m_getResourceName)
+	if (cache->m_getResourceAttrs)
 	{
-		const char* name = cache->m_getResourceName(slot, binding);
+		SRootResourceAttrs attrs = cache->m_getResourceAttrs(slot, binding);
+		TableUpdate& update = cache->m_TableUpdates.back();
+		if (strstr(attrs.type, "Cube"))
+			update.m_ReflectionFlags[binding] |= Refl_Flag_Cube;
+		if (strstr(attrs.type, "Array"))
+			update.m_ReflectionFlags[binding] |= Refl_Flag_Array;
+
+
 		uint32_t layout, offset;
 		bool new_search = true;
-		while (CParameterProviderRegistry::GetInstane()->FindNextLayout(name, new_search, layout, offset))
+		while (CParameterProviderRegistry::GetInstane()->FindNextLayout(attrs.name, new_search, layout, offset))
 		{
 			new_search = false;
 			cache->m_ProviderUsage[layout].push_back({ type, offset, slot, binding });
@@ -136,11 +146,11 @@ IObjectCollection::~IObjectCollection()
 	}
 }
 
-bool CShaderCache::CreateRootSignature(Device device, const SCodeBlob& code, TGetResourceName getName)
+bool CShaderCache::CreateRootSignature(Device device, const SCodeBlob& code, TGetResourceAttr getAttr)
 {
 	if ((m_RootSig = ::CreateRootSignature(device, code)) == nullptr)
 		return false;
-	m_getResourceName = getName;
+	m_getResourceAttrs = getAttr;
 	IterateRootSignature(m_RootSig, &CShaderCache::FindRootResource, this);
 	return true;
 }
@@ -148,7 +158,7 @@ bool CShaderCache::CreateRootSignature(Device device, const SCodeBlob& code, TGe
 void CShaderCache::UpdateResourceTable(Device device, uint32 slot, ResourceTable table)
 {
 	::UpdateResourceTable(device, m_RootSig, slot, table,
-		m_TableUpdates[slot].m_Descriptors.data(), 0, m_TableUpdates[slot].m_Descriptors.size());
+		m_TableUpdates[slot].m_Descriptors.data(), 0, m_TableUpdates[slot].m_Descriptors.size(), m_TableUpdates[slot].m_ReflectionFlags.data());
 }
 void CShaderCache::DestroyRootSignature(Device device)
 {

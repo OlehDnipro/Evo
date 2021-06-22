@@ -186,15 +186,20 @@ public:
 	const SimpleObject& GetBase() { return m_Object; }
 	IParameterProvider* GetModelProvider() { return (IParameterProvider*)&m_Provider; };
 };
+struct SRootResourceAttrs
+{
+	const char* name;
+	const char* type;
+};
 
 class CShaderCache
 {
-	typedef const char* (*TGetResourceName)(uint slot, uint bind);
-	TGetResourceName m_getResourceName;
+	typedef SRootResourceAttrs(*TGetResourceAttr)(uint slot, uint bind);
+	TGetResourceAttr m_getResourceAttrs;
 public:
 	void GatherParameters(const vector<SResourceDesc> &resources, uint slot, uint offset = 0);
 	void GatherParameters(Context context, IParameterProvider** providers,  uint count);
-	bool CreateRootSignature(Device device, const SCodeBlob& code, TGetResourceName getName);
+	bool CreateRootSignature(Device device, const SCodeBlob& code, TGetResourceAttr getAttr = nullptr);
 	void DestroyRootSignature(Device device);
 	RootSignature GetRootSignature() { return m_RootSig; }
 	void UpdateResourceTable(Device, uint32 slot, ResourceTable table);
@@ -204,6 +209,7 @@ private:
 	{
 		uint32_t slot;
 		vector<SResourceDesc> m_Descriptors;
+		vector<uint8> m_ReflectionFlags;
 	};
 	vector<TableUpdate> m_TableUpdates;
 	struct SRequiredParameter
