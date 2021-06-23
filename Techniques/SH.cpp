@@ -38,7 +38,7 @@ bool CComputeSHTask::CreateResources(Device device)
 	const SSamplerDesc samplers[] = { { FILTER_POINT, 1, AM_WRAP, AM_WRAP, AM_WRAP, ALWAYS }};
 	m_SamplerTable = CreateSamplerTable(m_Device, m_Cache.GetRootSignature(), NSH::Samplers, samplers);
 
-	SBufferParams params = { sizeof(ShBaseCoef) * m_Provider.m_TexSize.x * m_Provider.m_TexSize.y * 6 ,
+	SBufferParams params = { sizeof(ShPoly) * m_Provider.m_TexSize.x * m_Provider.m_TexSize.y * 6 ,
 							HeapType::HEAP_DEFAULT,
 							Usage::SHADER_RESOURCE,
 							nullptr };

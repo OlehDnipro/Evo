@@ -26,19 +26,19 @@ ROOT_BEGIN
 		TEXTURE Texture2DArray<float4> EnvTex;
 		RWTEXTURE RWTexture2DArray<float4> OutTex;
 
-		RWSTRUCTUREDBUFFER RWStructuredBuffer<ShBaseCoef> ShBase;
-		RWSTRUCTUREDBUFFER RWStructuredBuffer<ShPoly> ShSum;
+		RWSTRUCTUREDBUFFER RWStructuredBuffer<ShPoly> ShBase;
+		RWSTRUCTUREDBUFFER RWStructuredBuffer<ShPoly> ShSumGPUPass;
 	RT_END
 ROOT_END
 [Compute: CS]
 
-#define Face_Top 0   
-#define Face_Bottom 1  
-#define Face_Back 2 
-#define Face_Forward 3  
-#define Face_Left 4 
-#define Face_Right 5  
-groupshared ShPoly ShSumTemp[3];
+#define Face_Top 2   
+#define Face_Bottom 3  
+#define Face_Back 5 
+#define Face_Forward 4  
+#define Face_Left 0
+#define Face_Right 1  
+groupshared ShPoly ShSumPerArea[3];
 [numthreads(32, 32, 1)]
 void main(uint3 DTid : SV_DispatchThreadID) 
 {
@@ -49,9 +49,9 @@ void main(uint3 DTid : SV_DispatchThreadID)
 	if(x >= res.x || y >= res.y || face >=6 )
 		return;
 #ifdef COMPUTE_BASE	
-	ShSumTemp[0] = (ShPoly)0;
-	ShSumTemp[1] = (ShPoly)0;
-	ShSumTemp[2] = (ShPoly)0;
+	ShSumPerArea[0] = (ShPoly)0;
+	ShSumPerArea[1] = (ShPoly)0;
+	ShSumPerArea[2] = (ShPoly)0;
 
 	GroupMemoryBarrierWithGroupSync();
 	// Calculate directional vector  
@@ -61,6 +61,7 @@ void main(uint3 DTid : SV_DispatchThreadID)
    // Rotate to match cubemap face  
    switch (face)  
    {  
+   
 	 case Face_Back:  
 	 {  
 	   direction[0] *= -1.0f;  
@@ -96,35 +97,51 @@ void main(uint3 DTid : SV_DispatchThreadID)
    
    uint index = x + y*res.x + face*res.x*res.y;
 
-	ShBaseCoef shTemp;
-   shTemp.coef[0].x = 0.282095;  
-   shTemp.coef[0].y = 0.488603 * direction[1];  
-   shTemp.coef[0].z = 0.488603 * direction[2];  
-   shTemp.coef[0].w = 0.488603 * direction[0];  
-   shTemp.coef[1].x = 1.092548 * direction[0] * direction[1];  
-   shTemp.coef[1].y = 1.092548 * direction[1] * direction[2];  
-   shTemp.coef[1].z = 0.315392 * (3.0 * direction[2] * direction[2] - 1.0);  
-   shTemp.coef[1].w = 1.092548 * direction[0] * direction[2];  
-   shTemp.coef[2].x = 0.546274 * (direction[0] * direction[0] - direction[1] * direction[1]);  
-   ShBase[index] =  shTemp;
+	ShPoly base;
+   base.coef[0].x = 282095;  
+   base.coef[0].y = 488603 * direction[1];  
+   base.coef[0].z = 488603 * direction[2];  
+   base.coef[0].w = 488603 * direction[0];  
+   base.coef[1].x = 1092548 * direction[0] * direction[1];  
+   base.coef[1].y = 1092548 * direction[1] * direction[2];  
+   base.coef[1].z = 315392 * (3.0 * direction[2] * direction[2] - 1.0);  
+   base.coef[1].w = 1092548 * direction[0] * direction[2];  
+   base.coef[2].x = 546274 * (direction[0] * direction[0] - direction[1] * direction[1]);  
+   ShBase[index] =  base;
 	float4 color = EnvTex.SampleLevel(ColorSampler, int3(x,y,face),0);
+	float colorChannel;
 	[unroll]	
 	for(int ch = 0; ch < 3; ch++)
 	{
+		 switch (ch)  
+		{
+			case 0:
+				colorChannel = color.r;
+			break;
+			case 1:
+				colorChannel = color.g;
+			break;
+			case 2:
+				colorChannel = color.b;
+			break;
+		} 
+		ShPoly poly;
+		[unroll]
+		for(int i = 0; i < 3; i++)
+			poly.coef[i] = colorChannel*base.coef[i];
+		InterlockedAdd(ShSumPerArea[ch].coef[0].x, poly.coef[0].x);
+		InterlockedAdd(ShSumPerArea[ch].coef[0].y, poly.coef[0].y);
+		InterlockedAdd(ShSumPerArea[ch].coef[0].z, poly.coef[0].z);
 
-		InterlockedAdd(ShSumTemp[ch].coef[0].x, (int)1000000*color[ch]*shTemp.coef[0].x);
-		InterlockedAdd(ShSumTemp[ch].coef[0].y, (int)1000000*color[ch]*shTemp.coef[0].y);
-		InterlockedAdd(ShSumTemp[ch].coef[0].z, (int)1000000*color[ch]*shTemp.coef[0].z);
+		InterlockedAdd(ShSumPerArea[ch].coef[0].w, poly.coef[0].w);
+		InterlockedAdd(ShSumPerArea[ch].coef[1].x, poly.coef[1].x);
+		InterlockedAdd(ShSumPerArea[ch].coef[1].y, poly.coef[1].y);
 
-		InterlockedAdd(ShSumTemp[ch].coef[0].w, (int)1000000*color[ch]*shTemp.coef[0].w);
-		InterlockedAdd(ShSumTemp[ch].coef[1].x, (int)1000000*color[ch]*shTemp.coef[1].x);
-		InterlockedAdd(ShSumTemp[ch].coef[1].y, (int)1000000*color[ch]*shTemp.coef[1].y);
+		InterlockedAdd(ShSumPerArea[ch].coef[1].z, poly.coef[1].z);
+		InterlockedAdd(ShSumPerArea[ch].coef[1].w, poly.coef[1].w);
+		InterlockedAdd(ShSumPerArea[ch].coef[2].x, poly.coef[2].x);
 
-		InterlockedAdd(ShSumTemp[ch].coef[1].z, (int)1000000*color[ch]*shTemp.coef[1].z);
-		InterlockedAdd(ShSumTemp[ch].coef[1].w, (int)1000000*color[ch]*shTemp.coef[1].w);
-		InterlockedAdd(ShSumTemp[ch].coef[2].x, (int)1000000*color[ch]*shTemp.coef[2].x);
-
-		InterlockedAdd(ShSumTemp[ch].coef[2].y, 1);
+		InterlockedAdd(ShSumPerArea[ch].coef[2].y, 1);
 	}
 	
 	GroupMemoryBarrierWithGroupSync();
@@ -133,30 +150,30 @@ void main(uint3 DTid : SV_DispatchThreadID)
 	uint sum_index = x / 32 + ( y / 32 )*sum_size.x + face*sum_size.x*sum_size.y;
 	for(int _ch = 0; _ch < 3; _ch++)
 	{
-		ShSum[_ch*buf_size + sum_index] = ShSumTemp[_ch];
+		ShSumGPUPass[_ch*buf_size + sum_index] = ShSumPerArea[_ch];
 	}
 #else
    uint index = x + y*res.x + face*res.x*res.y;
 
 	float3 outColor = float3(0,0,0);
-	ShBaseCoef shDir = ShBase[index];
+	ShPoly base = ShBase[index];
 
 	[unroll]
 	for(int ch = 0; ch < 3; ch++)
 	{
 		ShBaseCoef curCoef = SHAverage.channels[ch];
-		outColor[ch] += curCoef.coef[0].x*shDir.coef[0].x;
-		outColor[ch] += curCoef.coef[0].y*shDir.coef[0].y;
-		outColor[ch] += curCoef.coef[0].z*shDir.coef[0].z;
+		outColor[ch] += curCoef.coef[0].x*base.coef[0].x/1000000.0f;
+		outColor[ch] += curCoef.coef[0].y*base.coef[0].y/1000000.0f;
+		outColor[ch] += curCoef.coef[0].z*base.coef[0].z/1000000.0f;
 
-		outColor[ch] += curCoef.coef[0].w*shDir.coef[0].w;
-		outColor[ch] += curCoef.coef[1].x*shDir.coef[1].x;
-		outColor[ch] += curCoef.coef[1].y*shDir.coef[1].y;
+		outColor[ch] += curCoef.coef[0].w*base.coef[0].w/1000000.0f;
+		outColor[ch] += curCoef.coef[1].x*base.coef[1].x/1000000.0f;
+		outColor[ch] += curCoef.coef[1].y*base.coef[1].y/1000000.0f;
 
-		outColor[ch] += curCoef.coef[1].z*shDir.coef[1].z;
-		outColor[ch] += curCoef.coef[1].w*shDir.coef[1].w;
-		outColor[ch] += curCoef.coef[2].x*shDir.coef[2].x;
-
+		outColor[ch] += curCoef.coef[1].z*base.coef[1].z/1000000.0f;
+		outColor[ch] += curCoef.coef[1].w*base.coef[1].w/1000000.0f;
+		outColor[ch] += curCoef.coef[2].x*base.coef[2].x/1000000.0f;
+	
 	}
 	
 	OutTex[uint3(x,y, face)] = float4(outColor,1 );
