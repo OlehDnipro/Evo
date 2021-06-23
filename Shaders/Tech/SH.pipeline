@@ -36,8 +36,8 @@ ROOT_END
 #define Face_Bottom 3  
 #define Face_Back 5 
 #define Face_Forward 4  
-#define Face_Left 0
-#define Face_Right 1  
+#define Face_Left 1
+#define Face_Right 0  
 groupshared ShPoly ShSumPerArea[3];
 [numthreads(32, 32, 1)]
 void main(uint3 DTid : SV_DispatchThreadID) 
@@ -56,7 +56,7 @@ void main(uint3 DTid : SV_DispatchThreadID)
 	GroupMemoryBarrierWithGroupSync();
 	// Calculate directional vector  
    // TODO: Correct direction to sample center of texel.  
-   float3 direction = normalize(float3((float)x / (float)(res.x - 1) * 2.0f - 1.0f, (float)y / (float)(res.y - 1) * 2.0f - 1.0f, -1.0f));  
+   float3 direction = normalize(float3((float)x / (float)(res.x - 1) * 2.0f - 1.0f, 1.0f - (float)y / (float)(res.y - 1) * 2.0f, 1.0f));  //forward
    
    // Rotate to match cubemap face  
    switch (face)  
@@ -82,14 +82,14 @@ void main(uint3 DTid : SV_DispatchThreadID)
 	 case Face_Top:  
 	 {  
 	   float const temp = direction[1];  
-	   direction[1] = -direction[2];  
-	   direction[2] = temp;  
+	   direction[1] = direction[2];  
+	   direction[2] = -temp;  
 	 } break;  
 	 case Face_Bottom:  
 	 {  
 	   float const temp = direction[1];  
-	   direction[1] = direction[2];  
-	   direction[2] = -temp;  
+	   direction[1] = -direction[2];  
+	   direction[2] = temp;  
 	 } break;  
 	 default:  
 	   break;  
