@@ -3199,6 +3199,7 @@ void Barrier(Context context, const SBarrierDesc* barriers, uint count)
 		EResourceState before = GetCurrentState(barriers[i].m_Desc);
         if (barriers[i].m_Desc.m_Type == RESTYPE_TEXTURE)
 		{
+			STextureSubresourceDesc range = barriers[i].m_Desc.m_texRange;
             const Texture texture = (Texture)barriers[i].m_Desc.m_Resource;
             bool isCube = texture->m_Type == TEX_CUBE || texture->m_Type == TEX_CUBE_ARRAY;
             uint ifCube6 = isCube ? 6 : 1;
@@ -3209,10 +3210,10 @@ void Barrier(Context context, const SBarrierDesc* barriers, uint count)
 			img_barrier.oldLayout = GetImageLayout(before, isDepth);
 			img_barrier.newLayout = GetImageLayout(barriers[i].m_Transition, isDepth);
 
-            img_barrier.subresourceRange.baseMipLevel = 0;
-            img_barrier.subresourceRange.levelCount = texture->m_MipLevels;
-            img_barrier.subresourceRange.baseArrayLayer = 0;
-            img_barrier.subresourceRange.layerCount = ifCube6*texture->m_Slices;
+            img_barrier.subresourceRange.baseMipLevel = range.mip == -1? 0 : range.mip;
+            img_barrier.subresourceRange.levelCount = range.mip == -1 ? texture->m_MipLevels : 1;
+            img_barrier.subresourceRange.baseArrayLayer = range.slice == -1 ? 0 : ifCube6* range.slice + (range.face == -1?0: range.face);
+            img_barrier.subresourceRange.layerCount = range.slice == -1 ? ifCube6 * texture->m_Slices : (range.face == -1? ifCube6 : 1);
 
             img_barrier.image = texture->m_Image;
 
