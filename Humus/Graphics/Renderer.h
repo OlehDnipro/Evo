@@ -368,9 +368,20 @@ struct SSamplerDesc
 	AddressMode   AddressModeV;
 	AddressMode   AddressModeW;
 	EComparisonFunc Comparison;
+	bool operator==(const SSamplerDesc& desc)const
+	{
+		return
+			Filter == desc.Filter &&
+			Aniso == desc.Aniso &&
+			AddressModeU == desc.AddressModeU &&
+			AddressModeV == desc.AddressModeV &&
+			AddressModeW == desc.AddressModeW &&
+			Comparison == desc.Comparison;
+	}
 };
-no_inline SamplerTable CreateSamplerTable(Device device, RootSignature root, uint32 slot, const SSamplerDesc* sampler_descs, uint count, Context onframe = nullptr);
-template<int N> force_inline SamplerTable CreateSamplerTable(Device device, RootSignature root, uint32 slot, const SSamplerDesc(&samplers)[N], Context onframe = nullptr) { return CreateSamplerTable(device, root, slot, samplers, N, onframe); }
+
+no_inline SamplerTable CreateSamplerTable(Device device, RootSignature root, uint32 slot, const SSamplerDesc* sampler_descs, uint count);
+template<int N> force_inline SamplerTable CreateSamplerTable(Device device, RootSignature root, uint32 slot, const SSamplerDesc(&samplers)[N]) { return CreateSamplerTable(device, root, slot, samplers, N); }
 void DestroySamplerTable(Device device, SamplerTable& table);
 enum RenderPassFlags:uint8
 {
@@ -385,11 +396,14 @@ struct SRenderPassDesc
 	ImageFormat m_DepthFormat;
 	RenderPassFlags m_Flags;
 	uint8 msaa_samples;
+	uint m_ColorTargetCount;
+
 };
 struct SFrameBuffer
 {
 	SResourceDesc m_ColorTargets[MAX_COLOR_TARGETS];
 	SResourceDesc m_DepthTarget, m_ResolveTarget;
+	uint m_ColorTargetCount;
 };
 inline RenderPassFlags operator | (RenderPassFlags a, RenderPassFlags b) { return RenderPassFlags(int(a) | int(b)); }
 
@@ -481,6 +495,8 @@ struct SBufferParams
 		, m_HeapType(heap_type)
 		, m_Usage(usage)
 		, m_Name(name)
+		, m_Stride(0)
+
 	{
 	}
 	SBufferParams(uint element_size, uint element_count, HeapType heap_type, Usage usage, const char* name)
@@ -488,12 +504,14 @@ struct SBufferParams
 		, m_HeapType(heap_type)
 		, m_Usage(usage)
 		, m_Name(name)
+		, m_Stride(element_size)
 	{
 	}
 
 	uint        m_Size;
 	HeapType    m_HeapType;
 	Usage		m_Usage;
+	uint		m_Stride;
 	const char* m_Name;
 };
 Buffer CreateBuffer(Device device, const SBufferParams& params);

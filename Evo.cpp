@@ -302,7 +302,7 @@ public:
 		UpdateCamera();
 
 		m_Poly.UpdatePos(0.025, float2(0, 0));
-		m_WaterTask.SetTextures(/*m_SHCubeMap*/m_CubeMap, m_RingDrop[0], m_Reflection, m_NormalTile);
+		m_WaterTask.SetTextures(/*m_SHCubeMap*/m_SHCubeMap, m_RingDrop[0], m_Reflection, m_NormalTile);
 		m_WaterTask.SetBox(eye, vec3(5.5, 1.75, 4), vec3(2, -0.25, -0.5), vec3(8.5, 1.75, 7), vec3(-1, -0.25, -3.5));
 		m_WaterTask.SetSpeed(WATERTEX_SPEED);
 		m_WaterTask.SetWaveOffset(WAVE_OFFSET);

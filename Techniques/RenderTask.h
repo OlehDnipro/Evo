@@ -3,7 +3,7 @@
 #pragma once
 
 #include "../Humus/Graphics/Renderer.h"
-#include "../Humus/Graphics/Vulkan/VulkanRootSignature.h"
+#include "../Humus/Graphics/RootSignature.h"
 #include "../Humus/Math/Vector.h"
 #include "../Humus/Util/ModelDae.h"
 #include "../ParameterProviderRegistry.h"

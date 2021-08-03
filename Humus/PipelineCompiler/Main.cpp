@@ -1,5 +1,5 @@
 #include "../Util/Tokenizer.h"
-#include "../Graphics/Vulkan/VulkanRootSignature.h"
+#include "../Graphics/RootSignature.h"
 #include <vector>
 #include <map>
 #include <string>
@@ -635,6 +635,8 @@ static Error WriteCppHeader(FILE* file, const char* header, size_t header_size, 
 		}
 		fprintf(file, "\n};\n");
 	}
+	ID3DBlob* blob = nullptr;
+
 	if (api == D3D12)
 	{
 		// Write root signature blob
@@ -754,7 +756,6 @@ static Error WriteCppHeader(FILE* file, const char* header, size_t header_size, 
 		}
 
 		ID3DBlob* errors = nullptr;
-		ID3DBlob* blob = nullptr;
 		HRESULT hr = D3D12SerializeVersionedRootSignature(&desc, &blob, &errors);
 		if (FAILED(hr))
 		{
@@ -770,60 +771,62 @@ static Error WriteCppHeader(FILE* file, const char* header, size_t header_size, 
 		if (blob)
 			blob->Release();
 	}
-	else
+
+	const int count = (int) items.size();
+
+	int resource_table_item_count = 0;
+	for (int i = 0; i < count; i++)
 	{
-		const int count = (int) items.size();
-
-		int resource_table_item_count = 0;
-		for (int i = 0; i < count; i++)
+		const SItem& it = items[i];
+		if (it.m_ItemType == RESOURCE_TABLE || it.m_ItemType == SAMPLER_TABLE)
 		{
-			const SItem& it = items[i];
-			if (it.m_ItemType == RESOURCE_TABLE || it.m_ItemType == SAMPLER_TABLE)
-			{
-				resource_table_item_count += (int) it.m_SubItems.size();
-			}
+			resource_table_item_count += (int) it.m_SubItems.size();
 		}
-
-
-		const size_t slots_size = sizeof(SVulkanRoot) + (count - 1) * sizeof(SVulkanRootSlot);
-		const size_t total_size = slots_size + resource_table_item_count * sizeof(SVulkanResourceTableItem);
-
-		char* mem = new char[total_size];
-		SVulkanRoot* root = (SVulkanRoot*) mem;
-		SVulkanResourceTableItem* resource_table_items = (SVulkanResourceTableItem*) (mem + slots_size);
-
-		root->m_NumSlots = count;
-
-		for (int i = 0; i < count; i++)
-		{
-			const SItem& it = items[i];
-			
-			root->m_Slots[i].m_Type = it.m_ItemType;
-			switch (it.m_ItemType)
-			{
-			/*case CONSTANT:
-				root->m_Slots[i].m_Size = GetNumDWORDs(it.m_Type.c_str());
-				break;*/
-			case RESOURCE_TABLE:
-			case SAMPLER_TABLE:
-				root->m_Slots[i].m_Size = (uint32) it.m_SubItems.size();
-				for (const SItem& it : it.m_SubItems)
-				{
-					resource_table_items->m_Type = it.m_ItemType;
-					resource_table_items->m_NumElements = it.m_Count? it.m_Count : 1;
-					resource_table_items++;
-				}
-				break;
-			default:
-				root->m_Slots[i].m_Size = it.m_Count;
-			}
-		}
-
-		ASSERT((char*) resource_table_items - mem == total_size);
-		WriteD3DBlob(file, mem, total_size, "RootSig");
-
-		delete [] mem;
 	}
+
+
+	const size_t slots_size = sizeof(SRoot) + (count - 1) * sizeof(SRootSlot);
+	size_t total_size = slots_size + resource_table_item_count * sizeof(SResourceTableItem);
+	size_t rootheader_size = total_size;
+	if (api == D3D12)
+		total_size += blob->GetBufferSize();
+	char* mem = new char[total_size];
+	SRoot* root = (SRoot*) mem;
+	SResourceTableItem* resource_table_items = (SResourceTableItem*) (mem + slots_size);
+
+	root->m_NumSlots = count;
+
+	for (int i = 0; i < count; i++)
+	{
+		const SItem& it = items[i];
+			
+		root->m_Slots[i].m_Type = it.m_ItemType;
+		switch (it.m_ItemType)
+		{
+		/*case CONSTANT:
+			root->m_Slots[i].m_Size = GetNumDWORDs(it.m_Type.c_str());
+			break;*/
+		case RESOURCE_TABLE:
+		case SAMPLER_TABLE:
+			root->m_Slots[i].m_Size = (uint32) it.m_SubItems.size();
+			for (const SItem& it : it.m_SubItems)
+			{
+				resource_table_items->m_Type = it.m_ItemType;
+				resource_table_items->m_NumElements = it.m_Count? it.m_Count : 1;
+				resource_table_items++;
+			}
+			break;
+		default:
+			root->m_Slots[i].m_Size = it.m_Count;
+		}
+	}
+
+	ASSERT((char*)resource_table_items - mem == rootheader_size);
+	if (api == D3D12)
+		memcpy(mem + rootheader_size, blob->GetBufferPointer(), blob->GetBufferSize());
+	WriteD3DBlob(file, mem, total_size, "RootSig");
+
+	delete[] mem;
 
 	return SUCCESS;
 }
@@ -1509,6 +1512,8 @@ int main(int argc, char **argv)
 			debug = true;
 		else if (strcmp(argv[i], "vulkan") == 0)
 			api = Vulkan;
+		else if (strcmp(argv[i], "dx12") == 0)
+			api = D3D12;
 		else
 		{
 			printf("Error: Unknown option \"%s\"\n", argv[i]);

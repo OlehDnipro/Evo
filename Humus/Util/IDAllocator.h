@@ -63,7 +63,7 @@ public:
 		m_Capacity = 1;
 	}
 
-	void Destroy()
+	void Clear()
 	{
 		::free(m_Ranges);
 	}

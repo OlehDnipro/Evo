@@ -36,21 +36,21 @@ enum ItemType
 	INVALID = -1,
 };
 
-struct SVulkanRootSlot
+struct SRootSlot
 {
 	ItemType m_Type;
 	uint32   m_Size;
 };
 
-struct SVulkanResourceTableItem
+struct SResourceTableItem
 {
 	ItemType m_Type;
 	uint32   m_NumElements;
 };
 
-struct SVulkanRoot
+struct SRoot
 {
 	uint32 m_NumSlots;
-	SVulkanRootSlot m_Slots[1]; // Will actually contain m_NumSlots elements
+	SRootSlot m_Slots[1]; // Will actually contain m_NumSlots elements
 };
 typedef void (*RootCallback)(ItemType type, uint table, uint binding, uint table_creation_size, void* receiver);

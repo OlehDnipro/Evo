@@ -20,7 +20,7 @@
 \* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 #ifdef GRAPHICS_API_VULKAN
 #include "../Renderer.h"
-#include "VulkanRootSignature.h"
+#include "../RootSignature.h"
 #include "../../Util/Array.h"
 #include <map>
 #include <vector>
@@ -77,7 +77,7 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL VulkanCallback(VkDebugUtilsMessageSeverity
 
 struct SDevice
 {
-	VkDevice m_Device;
+	VkDevice m_VkDevice;
 	VkQueue m_GraphicsQueue;
 	uint    m_GraphicsQueueIndex;
 
@@ -403,7 +403,7 @@ VkImageView AcquireTextureSubresourceView(Device device, const SResourceDesc& re
 		view_create_info.components = { VK_COMPONENT_SWIZZLE_R, VK_COMPONENT_SWIZZLE_G, VK_COMPONENT_SWIZZLE_B, VK_COMPONENT_SWIZZLE_A };
 		view_create_info.subresourceRange = sub->m_Range;
 
-		VkResult res = vkCreateImageView(device->m_Device, &view_create_info, VK_NULL_HANDLE, &view->second);
+		VkResult res = vkCreateImageView(device->m_VkDevice, &view_create_info, VK_NULL_HANDLE, &view->second);
 		ASSERT(res == VK_SUCCESS);
 		return view->second;
 	}
@@ -448,7 +448,7 @@ struct SRootSignature
 		uint32   m_Offset;
 
 		VkDescriptorSetLayout m_DescriptorSetLayout;
-		SVulkanResourceTableItem* m_Items;
+		SResourceTableItem* m_Items;
 	};
 
 	uint32 m_SlotCount;
@@ -515,11 +515,11 @@ static bool CreateBackBufferSetups(Device device, uint width, uint height, Image
 	// Get the swap chain images
 	VkImage back_buffers[BUFFER_FRAMES];
 	uint32_t image_count = 0;
-	VkResult res = vkGetSwapchainImagesKHR(device->m_Device, device->m_SwapChain, &image_count, VK_NULL_HANDLE);
+	VkResult res = vkGetSwapchainImagesKHR(device->m_VkDevice, device->m_SwapChain, &image_count, VK_NULL_HANDLE);
 	if (res == VK_SUCCESS)
 	{
 		ASSERT(image_count == BUFFER_FRAMES);
-		res = vkGetSwapchainImagesKHR(device->m_Device, device->m_SwapChain, &image_count, back_buffers);
+		res = vkGetSwapchainImagesKHR(device->m_VkDevice, device->m_SwapChain, &image_count, back_buffers);
 		if (res == VK_SUCCESS)
 		{
 			for (uint i = 0; i < BUFFER_FRAMES; i++)
@@ -657,7 +657,7 @@ static VkPhysicalDevice ChoosePhysicalDevice(VkInstance instance)
 static void CreateSwapchain(Device device, bool vsync)
 {
 	if (device->m_SwapChain)
-		vkDestroySwapchainKHR(device->m_Device, device->m_SwapChain, VK_NULL_HANDLE);
+		vkDestroySwapchainKHR(device->m_VkDevice, device->m_SwapChain, VK_NULL_HANDLE);
 
 	VkSurfaceCapabilitiesKHR surface_capabilities;
 	VkResult res = vkGetPhysicalDeviceSurfaceCapabilitiesKHR(device->m_PhysicalDevice, device->m_Surface, &surface_capabilities);
@@ -665,7 +665,7 @@ static void CreateSwapchain(Device device, bool vsync)
 
 	device->m_SwapchainCreateInfo.presentMode = GetPresentMode(device->m_PhysicalDevice, device->m_Surface, vsync);
 
-	res = vkCreateSwapchainKHR(device->m_Device, &device->m_SwapchainCreateInfo, VK_NULL_HANDLE, &device->m_SwapChain);
+	res = vkCreateSwapchainKHR(device->m_VkDevice, &device->m_SwapchainCreateInfo, VK_NULL_HANDLE, &device->m_SwapChain);
 	ASSERT(res == VK_SUCCESS);
 }
 
@@ -965,7 +965,7 @@ Device CreateDevice(DeviceParams& params)
 	// TODO: Allocate later ...
 	Device device = new SDevice;
 	memset(device, 0, sizeof(SDevice));
-	device->m_Device = vk_device;
+	device->m_VkDevice = vk_device;
 	device->m_GraphicsQueue = graphics_queue;
 	device->m_GraphicsQueueIndex = graphics_queue_index;
 	device->m_Window = hwnd;
@@ -1099,20 +1099,20 @@ void DestroyDevice(Device& device)
 #endif
 	DestroyBlendState(device, device->m_DefaultBlendState);
 
-	vkDestroyDescriptorPool(device->m_Device, device->m_DescriptorPool, VK_NULL_HANDLE);
+	vkDestroyDescriptorPool(device->m_VkDevice, device->m_DescriptorPool, VK_NULL_HANDLE);
 
 	DestroyBackBufferSetups(device);
 
 	DestroyContext(device, device->m_MainContext);
 
-	vkDestroySemaphore(device->m_Device, device->m_PresentSemaphore, VK_NULL_HANDLE);
+	vkDestroySemaphore(device->m_VkDevice, device->m_PresentSemaphore, VK_NULL_HANDLE);
 	
 	for (SCommandList& cmdList : device->m_CommandBuffers)
 		cmdList.Destroy(device);
 
-	vkDestroyCommandPool(device->m_Device, device->m_CommandPool, VK_NULL_HANDLE);
+	vkDestroyCommandPool(device->m_VkDevice, device->m_CommandPool, VK_NULL_HANDLE);
 
-	vkDestroySwapchainKHR(device->m_Device, device->m_SwapChain, VK_NULL_HANDLE);
+	vkDestroySwapchainKHR(device->m_VkDevice, device->m_SwapChain, VK_NULL_HANDLE);
 	vkDestroySurfaceKHR(device->m_Instance, device->m_Surface, VK_NULL_HANDLE);
 	for (auto& pass : *device->m_RenderpassDictionary)
 	{
@@ -1120,7 +1120,7 @@ void DestroyDevice(Device& device)
 	}
 
 
-	vkDestroyDevice(device->m_Device, VK_NULL_HANDLE);
+	vkDestroyDevice(device->m_VkDevice, VK_NULL_HANDLE);
 	vkDestroyInstance(device->m_Instance, VK_NULL_HANDLE);
 
 	delete device->m_RenderpassDictionary;
@@ -1173,7 +1173,7 @@ uint GetBackBufferIndex(Device device)
 
 		// TODO: Evaluate if this really belongs here ...
 
-		VkResult res = vkAcquireNextImageKHR(device->m_Device, device->m_SwapChain, UINT64_MAX, device->m_PresentSemaphore, VK_NULL_HANDLE, &device->m_SwapchainImageId);
+		VkResult res = vkAcquireNextImageKHR(device->m_VkDevice, device->m_SwapChain, UINT64_MAX, device->m_PresentSemaphore, VK_NULL_HANDLE, &device->m_SwapchainImageId);
 		ASSERT(res == VK_SUCCESS);
 	}
 
@@ -1346,11 +1346,11 @@ Texture CreateTexture(Device device, const STextureParams& params)
 		image_create_info.usage |= VK_IMAGE_USAGE_TRANSFER_DST_BIT;
 
 	image_create_info.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-	VkResult res = vkCreateImage(device->m_Device, &image_create_info, VK_NULL_HANDLE, &image);
+	VkResult res = vkCreateImage(device->m_VkDevice, &image_create_info, VK_NULL_HANDLE, &image);
 	ASSERT(res == VK_SUCCESS);
 
 	VkMemoryRequirements mem_reqs;
-	vkGetImageMemoryRequirements(device->m_Device, image, &mem_reqs);
+	vkGetImageMemoryRequirements(device->m_VkDevice, image, &mem_reqs);
 
 	// Allocate memory for the image (device local) and bind it to our image
 	VkMemoryAllocateInfo mem_alloc_info = {};
@@ -1359,10 +1359,10 @@ Texture CreateTexture(Device device, const STextureParams& params)
 	mem_alloc_info.memoryTypeIndex = GetMemoryTypeIndex(device->m_MemoryProperties, mem_reqs.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 
 	VkDeviceMemory memory = VK_NULL_HANDLE;
-	res = vkAllocateMemory(device->m_Device, &mem_alloc_info, VK_NULL_HANDLE, &memory);
+	res = vkAllocateMemory(device->m_VkDevice, &mem_alloc_info, VK_NULL_HANDLE, &memory);
 	ASSERT(res == VK_SUCCESS);
 
-	res = vkBindImageMemory(device->m_Device, image, memory, 0);
+	res = vkBindImageMemory(device->m_VkDevice, image, memory, 0);
 	ASSERT(res == VK_SUCCESS);
 
 	Texture texture = new STexture();
@@ -1385,7 +1385,7 @@ void DestroyTextureSubresource(Device device, STextureSubresource* sub)
 	{
 		for (auto& view : *sub->m_Views)
 		{
-			vkDestroyImageView(device->m_Device, view.second, VK_NULL_HANDLE);
+			vkDestroyImageView(device->m_VkDevice, view.second, VK_NULL_HANDLE);
 		}
 		delete sub->m_Views;
 	}
@@ -1404,7 +1404,7 @@ void DestroyTexture(Device device, Texture& texture)
 {
 	if (texture)
 	{
-		vkFreeMemory(device->m_Device, texture->m_Memory, VK_NULL_HANDLE);
+		vkFreeMemory(device->m_VkDevice, texture->m_Memory, VK_NULL_HANDLE);
 		if (texture->m_SubresourceDictionary)
 		{
 			for (auto& it : *texture->m_SubresourceDictionary)
@@ -1412,7 +1412,7 @@ void DestroyTexture(Device device, Texture& texture)
 				DestroyTextureSubresource(device, it.second);
 			}
 		}
-		vkDestroyImage(device->m_Device, texture->m_Image, VK_NULL_HANDLE);
+		vkDestroyImage(device->m_VkDevice, texture->m_Image, VK_NULL_HANDLE);
 		delete texture->m_SubresourceDictionary;
 		delete texture;
 		texture = VK_NULL_HANDLE;
@@ -1438,7 +1438,7 @@ void UpdateResourceTable(Device device, RootSignature root, uint32 slot, Resourc
 
 	for (uint i = offset; i < offset + count; i++)
 	{
-		const SVulkanResourceTableItem& item = root_slot.m_Items[binding];
+		const SResourceTableItem& item = root_slot.m_Items[binding];
 
 		switch (item.m_Type)
 		{
@@ -1497,7 +1497,7 @@ void UpdateResourceTable(Device device, RootSignature root, uint32 slot, Resourc
 		descriptor_write.dstBinding = binding;
 		descriptor_write.dstArrayElement = element;
 
-		vkUpdateDescriptorSets(device->m_Device, 1, &descriptor_write, 0, VK_NULL_HANDLE);
+		vkUpdateDescriptorSets(device->m_VkDevice, 1, &descriptor_write, 0, VK_NULL_HANDLE);
 
 		++element;
 		if (element >= root_slot.m_Items[binding].m_NumElements)
@@ -1525,7 +1525,7 @@ ResourceTable CreateResourceTable(Device device, RootSignature root, uint32 slot
 	info.descriptorSetCount = 1;
 	info.pSetLayouts = &root->m_Slots[slot].m_DescriptorSetLayout;
 
-	VkResult res = vkAllocateDescriptorSets(device->m_Device, &info, &descriptor_set);
+	VkResult res = vkAllocateDescriptorSets(device->m_VkDevice, &info, &descriptor_set);
 	ASSERT(res == VK_SUCCESS);
 	ResourceTable rt = new SResourceTable();
 	rt->m_DescriptorSet = descriptor_set;	
@@ -1548,13 +1548,13 @@ void DestroyResourceTable(Device device, ResourceTable& table)
 			table = VK_NULL_HANDLE;
 			return;
 		}
-		vkFreeDescriptorSets(device->m_Device, device->m_DescriptorPool, 1, &table->m_DescriptorSet);
+		vkFreeDescriptorSets(device->m_VkDevice, device->m_DescriptorPool, 1, &table->m_DescriptorSet);
 		delete table;
 		table = VK_NULL_HANDLE;
 	}
 }
 
-SamplerTable CreateSamplerTable(Device device, RootSignature root, uint32 slot, const SSamplerDesc* sampler_descs, uint count, Context onframe)
+SamplerTable CreateSamplerTable(Device device, RootSignature root, uint32 slot, const SSamplerDesc* sampler_descs, uint count)
 {
 	ASSERT(slot < root->m_SlotCount);
 	ASSERT(count == root->m_Slots[slot].m_Size);
@@ -1563,11 +1563,11 @@ SamplerTable CreateSamplerTable(Device device, RootSignature root, uint32 slot, 
 
 	VkDescriptorSetAllocateInfo alloc_info = {};
 	alloc_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-	alloc_info.descriptorPool = onframe? onframe->m_CmdList->m_DescriptorPool :device->m_DescriptorPool;
+	alloc_info.descriptorPool = device->m_DescriptorPool;
 	alloc_info.descriptorSetCount = 1;
 	alloc_info.pSetLayouts = &root->m_Slots[slot].m_DescriptorSetLayout;
 
-	VkResult res = vkAllocateDescriptorSets(device->m_Device, &alloc_info, &descriptor_set);
+	VkResult res = vkAllocateDescriptorSets(device->m_VkDevice, &alloc_info, &descriptor_set);
 	ASSERT(res == VK_SUCCESS);
 
 	// Allocate variable size depending on count
@@ -1603,7 +1603,7 @@ SamplerTable CreateSamplerTable(Device device, RootSignature root, uint32 slot, 
 		sampler_info.compareEnable = sampler_desc.Comparison != EComparisonFunc::ALWAYS;
 		sampler_info.compareOp = (VkCompareOp)sampler_desc.Comparison;
 		VkSampler sampler = VK_NULL_HANDLE;
-		res = vkCreateSampler(device->m_Device, &sampler_info, VK_NULL_HANDLE, &sampler);
+		res = vkCreateSampler(device->m_VkDevice, &sampler_info, VK_NULL_HANDLE, &sampler);
 		ASSERT(res == VK_SUCCESS);
 
 		table->m_Samplers[i] = sampler;
@@ -1619,7 +1619,7 @@ SamplerTable CreateSamplerTable(Device device, RootSignature root, uint32 slot, 
 	descriptor_write.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER;
 	descriptor_write.pImageInfo = image_infos;
 
-	vkUpdateDescriptorSets(device->m_Device, 1, &descriptor_write, 0, VK_NULL_HANDLE);
+	vkUpdateDescriptorSets(device->m_VkDevice, 1, &descriptor_write, 0, VK_NULL_HANDLE);
 
 	return table;
 }
@@ -1634,9 +1634,9 @@ void DestroySamplerTable(Device device, SamplerTable& table)
 
 		for (uint i = 0; i < table->m_Count; i++)
 		{
-			vkDestroySampler(device->m_Device, table->m_Samplers[i], VK_NULL_HANDLE);
+			vkDestroySampler(device->m_VkDevice, table->m_Samplers[i], VK_NULL_HANDLE);
 		}
-		vkFreeDescriptorSets(device->m_Device, device->m_DescriptorPool, 1, &table->m_DescriptorSet);
+		vkFreeDescriptorSets(device->m_VkDevice, device->m_DescriptorPool, 1, &table->m_DescriptorSet);
 
 		delete[] table;
 		table = VK_NULL_HANDLE;
@@ -1758,7 +1758,7 @@ RenderPass AcquireRenderPass(Device device, const SRenderPassDesc& desc)
 	renderpass_create_info.pDependencies = dependencies;
 
 	VkRenderPass vk_render_pass = VK_NULL_HANDLE;
-	VkResult res = vkCreateRenderPass(device->m_Device, &renderpass_create_info, VK_NULL_HANDLE, &vk_render_pass);
+	VkResult res = vkCreateRenderPass(device->m_VkDevice, &renderpass_create_info, VK_NULL_HANDLE, &vk_render_pass);
 	ASSERT(res == VK_SUCCESS);
 
 
@@ -1774,7 +1774,7 @@ void DestroyRenderPass(Device device, RenderPass& render_pass)
 {
 	if (render_pass)
 	{
-		vkDestroyRenderPass(device->m_Device, render_pass->m_RenderPass, VK_NULL_HANDLE);
+		vkDestroyRenderPass(device->m_VkDevice, render_pass->m_RenderPass, VK_NULL_HANDLE);
 
 		delete render_pass;
 		render_pass = VK_NULL_HANDLE;
@@ -1838,7 +1838,7 @@ RenderSetup CreateRenderSetup(Device device, RenderPass render_pass, SFrameBuffe
 	framebuffer_create_info.layers = 1;
 
 	VkFramebuffer frame_buffer = VK_NULL_HANDLE;
-	VkResult res = vkCreateFramebuffer(device->m_Device, &framebuffer_create_info, VK_NULL_HANDLE, &frame_buffer);
+	VkResult res = vkCreateFramebuffer(device->m_VkDevice, &framebuffer_create_info, VK_NULL_HANDLE, &frame_buffer);
 	ASSERT(res == VK_SUCCESS);
 
 
@@ -1857,7 +1857,7 @@ void DestroyRenderSetup(Device device, RenderSetup& setup)
 {
 	if (setup)
 	{
-		vkDestroyFramebuffer(device->m_Device, setup->m_FrameBuffer, VK_NULL_HANDLE);
+		vkDestroyFramebuffer(device->m_VkDevice, setup->m_FrameBuffer, VK_NULL_HANDLE);
 
 		delete setup;
 		setup = VK_NULL_HANDLE;
@@ -1866,19 +1866,19 @@ void DestroyRenderSetup(Device device, RenderSetup& setup)
 
 RootSignature CreateRootSignature(Device device, const SCodeBlob& blob)
 {
-	const SVulkanRoot* root = (const SVulkanRoot*)blob.m_Code;
+	const SRoot* root = (const SRoot*)blob.m_Code;
 	VkDescriptorSetLayoutBinding* bindings = VK_NULL_HANDLE;
 	// Create the pipeline layout that is used to generate the rendering pipelines that are based on this descriptor set layout
 // In a more complex scenario you would have different pipeline layouts for different descriptor set layouts that could be reused
 	VkPipelineLayoutCreateInfo pipeline_layout_create_info = {};
 	pipeline_layout_create_info.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-	const SVulkanResourceTableItem* resource_table_items = nullptr;
+	const SResourceTableItem* resource_table_items = nullptr;
 	VkDescriptorSetLayout descriptor_set_layouts[16] = {};
 
 	if (root->m_NumSlots)
 	{
-		const size_t root_slots_size = sizeof(SVulkanRoot) + (root->m_NumSlots - 1) * sizeof(SVulkanRootSlot);
-		resource_table_items = (const SVulkanResourceTableItem*)((char*)root + root_slots_size);
+		const size_t root_slots_size = sizeof(SRoot) + (root->m_NumSlots - 1) * sizeof(SRootSlot);
+		resource_table_items = (const SResourceTableItem*)((char*)root + root_slots_size);
 
 		ASSERT(blob.m_Size >= root_slots_size);
 
@@ -1888,7 +1888,7 @@ RootSignature CreateRootSignature(Device device, const SCodeBlob& blob)
 		const uint32 num_slots = root->m_NumSlots;
 		for (uint32 i = 0; i < num_slots; i++)
 		{
-			const SVulkanRootSlot& slot = root->m_Slots[i];
+			const SRootSlot& slot = root->m_Slots[i];
 			if (slot.m_Type == RESOURCE_TABLE || slot.m_Type == SAMPLER_TABLE)
 			{
 				max_table_size = max(max_table_size, slot.m_Size);
@@ -1902,7 +1902,7 @@ RootSignature CreateRootSignature(Device device, const SCodeBlob& blob)
 
 		ASSERT(blob.m_Size == size_t((char*)resource_table_items - (char*)root));
 		// Reset pointer for reiteration
-		resource_table_items = (const SVulkanResourceTableItem*)((char*)root + root_slots_size);
+		resource_table_items = (const SResourceTableItem*)((char*)root + root_slots_size);
 
 		VkPushConstantRange range;
 		range.stageFlags = VK_SHADER_STAGE_ALL;
@@ -1930,7 +1930,7 @@ RootSignature CreateRootSignature(Device device, const SCodeBlob& blob)
 		uint32 num_descriptor_sets = 0;
 		for (uint32 i = 0; i < num_slots; i++)
 		{
-			const SVulkanRootSlot& slot = root->m_Slots[i];
+			const SRootSlot& slot = root->m_Slots[i];
 
 			switch (slot.m_Type)
 			{
@@ -1950,7 +1950,7 @@ RootSignature CreateRootSignature(Device device, const SCodeBlob& blob)
 				layout_info.bindingCount = 1;
 				layout_info.pBindings = &ubo_binding;
 
-				VkResult res = vkCreateDescriptorSetLayout(device->m_Device, &layout_info, VK_NULL_HANDLE, &descriptor_set_layouts[num_descriptor_sets]);
+				VkResult res = vkCreateDescriptorSetLayout(device->m_VkDevice, &layout_info, VK_NULL_HANDLE, &descriptor_set_layouts[num_descriptor_sets]);
 				ASSERT(res == VK_SUCCESS);
 
 				++num_descriptor_sets;
@@ -1973,7 +1973,7 @@ RootSignature CreateRootSignature(Device device, const SCodeBlob& blob)
 				layout_info.bindingCount = slot.m_Size;
 				layout_info.pBindings = bindings;
 
-				VkResult res = vkCreateDescriptorSetLayout(device->m_Device, &layout_info, VK_NULL_HANDLE, &descriptor_set_layouts[num_descriptor_sets]);
+				VkResult res = vkCreateDescriptorSetLayout(device->m_VkDevice, &layout_info, VK_NULL_HANDLE, &descriptor_set_layouts[num_descriptor_sets]);
 				ASSERT(res == VK_SUCCESS);
 
 				++num_descriptor_sets;
@@ -1997,10 +1997,10 @@ RootSignature CreateRootSignature(Device device, const SCodeBlob& blob)
 			pipeline_layout_create_info.pSetLayouts = descriptor_set_layouts;
 		}
 		// Reset pointer for reiteration
-		resource_table_items = (const SVulkanResourceTableItem*)((char*)root + root_slots_size);
+		resource_table_items = (const SResourceTableItem*)((char*)root + root_slots_size);
 	}
 	VkPipelineLayout pipeline_layout = VK_NULL_HANDLE;
-	VkResult res = vkCreatePipelineLayout(device->m_Device, &pipeline_layout_create_info, VK_NULL_HANDLE, &pipeline_layout);
+	VkResult res = vkCreatePipelineLayout(device->m_VkDevice, &pipeline_layout_create_info, VK_NULL_HANDLE, &pipeline_layout);
 	ASSERT(res == VK_SUCCESS);
 
 	RootSignature root_sig = new SRootSignature();
@@ -2033,8 +2033,8 @@ RootSignature CreateRootSignature(Device device, const SCodeBlob& blob)
 
 		if (type == RESOURCE_TABLE || type == SAMPLER_TABLE)
 		{
-			slot.m_Items = new SVulkanResourceTableItem[slot.m_Size];
-			memcpy(slot.m_Items, resource_table_items, slot.m_Size * sizeof(SVulkanResourceTableItem));
+			slot.m_Items = new SResourceTableItem[slot.m_Size];
+			memcpy(slot.m_Items, resource_table_items, slot.m_Size * sizeof(SResourceTableItem));
 			resource_table_items += slot.m_Size;
 		}
 		else
@@ -2050,13 +2050,13 @@ void DestroyRootSignature(Device device, RootSignature& root)
 {
 	if (root)
 	{
-		vkDestroyPipelineLayout(device->m_Device, root->m_PipelineLayout, VK_NULL_HANDLE);
+		vkDestroyPipelineLayout(device->m_VkDevice, root->m_PipelineLayout, VK_NULL_HANDLE);
 
 		for (uint32 i = 0; i < root->m_SlotCount; i++)
 		{
 			SRootSignature::SRootSlot& slot = root->m_Slots[i];
 
-			vkDestroyDescriptorSetLayout(device->m_Device, slot.m_DescriptorSetLayout, VK_NULL_HANDLE);
+			vkDestroyDescriptorSetLayout(device->m_VkDevice, slot.m_DescriptorSetLayout, VK_NULL_HANDLE);
 			delete [] slot.m_Items;
 		}
 
@@ -2220,13 +2220,13 @@ Pipeline CreatePipeline(Device device, const SPipelineParams& params)
 	uint num_stages = 0;
 
 	if (params.m_TS.m_Code)
-		shader_stages[num_stages++] = LoadShader(device->m_Device, params.m_TS, VK_SHADER_STAGE_TASK_BIT_NV);
+		shader_stages[num_stages++] = LoadShader(device->m_VkDevice, params.m_TS, VK_SHADER_STAGE_TASK_BIT_NV);
 	if (params.m_MS.m_Code)
-		shader_stages[num_stages++] = LoadShader(device->m_Device, params.m_MS, VK_SHADER_STAGE_MESH_BIT_NV);
+		shader_stages[num_stages++] = LoadShader(device->m_VkDevice, params.m_MS, VK_SHADER_STAGE_MESH_BIT_NV);
 	if (params.m_VS.m_Code)
-		shader_stages[num_stages++] = LoadShader(device->m_Device, params.m_VS, VK_SHADER_STAGE_VERTEX_BIT);
+		shader_stages[num_stages++] = LoadShader(device->m_VkDevice, params.m_VS, VK_SHADER_STAGE_VERTEX_BIT);
 	if (params.m_PS.m_Code)
-		shader_stages[num_stages++] = LoadShader(device->m_Device, params.m_PS, VK_SHADER_STAGE_FRAGMENT_BIT);
+		shader_stages[num_stages++] = LoadShader(device->m_VkDevice, params.m_PS, VK_SHADER_STAGE_FRAGMENT_BIT);
 
 	VkSpecializationInfo specialization;
 	if (params.m_NumSpecializationConstants)
@@ -2259,7 +2259,7 @@ Pipeline CreatePipeline(Device device, const SPipelineParams& params)
 
 	// Create rendering pipeline using the specified states
 	VkPipeline vk_pipeline = VK_NULL_HANDLE;
-	VkResult res = vkCreateGraphicsPipelines(device->m_Device, VK_NULL_HANDLE, 1, &pipeline_create_info, VK_NULL_HANDLE, &vk_pipeline);
+	VkResult res = vkCreateGraphicsPipelines(device->m_VkDevice, VK_NULL_HANDLE, 1, &pipeline_create_info, VK_NULL_HANDLE, &vk_pipeline);
 	ASSERT(res == VK_SUCCESS);
 
 
@@ -2275,7 +2275,7 @@ Pipeline CreatePipeline(Device device, const SPipelineParams& params)
 
 Pipeline CreatePipeline(Device device, const SComputePipelineParams& params)
 {
-	VkPipelineShaderStageCreateInfo shader_stage = LoadShader(device->m_Device, params.m_CS, VK_SHADER_STAGE_COMPUTE_BIT);
+	VkPipelineShaderStageCreateInfo shader_stage = LoadShader(device->m_VkDevice, params.m_CS, VK_SHADER_STAGE_COMPUTE_BIT);
 
 	VkSpecializationInfo specialization;
 	if (params.m_NumSpecializationConstants)
@@ -2294,7 +2294,7 @@ Pipeline CreatePipeline(Device device, const SComputePipelineParams& params)
 	pipeline_create_info.stage = shader_stage;
 
 	VkPipeline vk_pipeline = VK_NULL_HANDLE;
-	VkResult res = vkCreateComputePipelines(device->m_Device, VK_NULL_HANDLE, 1, &pipeline_create_info, VK_NULL_HANDLE, &vk_pipeline);
+	VkResult res = vkCreateComputePipelines(device->m_VkDevice, VK_NULL_HANDLE, 1, &pipeline_create_info, VK_NULL_HANDLE, &vk_pipeline);
 	ASSERT(res == VK_SUCCESS);
 
 
@@ -2313,10 +2313,10 @@ void DestroyPipeline(Device device, Pipeline& pipeline)
 {
 	if (pipeline)
 	{
-		vkDestroyPipeline(device->m_Device, pipeline->m_Pipeline, VK_NULL_HANDLE);
+		vkDestroyPipeline(device->m_VkDevice, pipeline->m_Pipeline, VK_NULL_HANDLE);
 
 		for (VkShaderModule& m : pipeline->m_Modules)
-			vkDestroyShaderModule(device->m_Device, m, VK_NULL_HANDLE);
+			vkDestroyShaderModule(device->m_VkDevice, m, VK_NULL_HANDLE);
 
 		delete pipeline;
 		pipeline = VK_NULL_HANDLE;
@@ -2383,7 +2383,7 @@ static void CreateUniformBufferDescriptorSet(Device device, VkBuffer buffer, siz
 	info.descriptorPool = device->m_DescriptorPool;
 	info.descriptorSetCount = 1;
 	info.pSetLayouts = descriptor_set_layout;
-	vkAllocateDescriptorSets(device->m_Device, &info, &descriptor_set);
+	vkAllocateDescriptorSets(device->m_VkDevice, &info, &descriptor_set);
 
 
 	VkDescriptorBufferInfo buffer_info;
@@ -2399,7 +2399,7 @@ static void CreateUniformBufferDescriptorSet(Device device, VkBuffer buffer, siz
 	descriptor_write.descriptorCount = 1;
 	descriptor_write.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
 	descriptor_write.pBufferInfo = &buffer_info;
-	vkUpdateDescriptorSets(device->m_Device, 1, &descriptor_write, 0, VK_NULL_HANDLE);
+	vkUpdateDescriptorSets(device->m_VkDevice, 1, &descriptor_write, 0, VK_NULL_HANDLE);
 }
 
 Buffer CreateBuffer(Device device, const SBufferParams& params)
@@ -2428,12 +2428,12 @@ Buffer CreateBuffer(Device device, const SBufferParams& params)
 
 
 	VkBuffer vk_buffer = VK_NULL_HANDLE;
-	VkResult res = vkCreateBuffer(device->m_Device, &buffer_create_info, VK_NULL_HANDLE, &vk_buffer);
+	VkResult res = vkCreateBuffer(device->m_VkDevice, &buffer_create_info, VK_NULL_HANDLE, &vk_buffer);
 	if (res != VK_SUCCESS)
 		return VK_NULL_HANDLE;
 
 	VkMemoryRequirements mem_reqs;
-	vkGetBufferMemoryRequirements(device->m_Device, vk_buffer, &mem_reqs);
+	vkGetBufferMemoryRequirements(device->m_VkDevice, vk_buffer, &mem_reqs);
 
 	uint32 memory_bits = (params.m_HeapType == HEAP_DEFAULT)? VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT : (VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
 
@@ -2443,11 +2443,11 @@ Buffer CreateBuffer(Device device, const SBufferParams& params)
 	mem_alloc_info.memoryTypeIndex = GetMemoryTypeIndex(device->m_MemoryProperties, mem_reqs.memoryTypeBits, memory_bits);
 
 	VkDeviceMemory memory = VK_NULL_HANDLE;
-	res = vkAllocateMemory(device->m_Device, &mem_alloc_info, VK_NULL_HANDLE, &memory);
+	res = vkAllocateMemory(device->m_VkDevice, &mem_alloc_info, VK_NULL_HANDLE, &memory);
 	if (res != VK_SUCCESS)
 		return VK_NULL_HANDLE;
 
-	vkBindBufferMemory(device->m_Device, vk_buffer, memory, 0);
+	vkBindBufferMemory(device->m_VkDevice, vk_buffer, memory, 0);
 
 	Buffer buffer = new SBuffer();
 	buffer->m_Buffer = vk_buffer;
@@ -2461,8 +2461,8 @@ void DestroyBuffer(Device device, Buffer& buffer)
 {
 	if (buffer)
 	{
-		vkFreeMemory(device->m_Device, buffer->m_Memory, VK_NULL_HANDLE);
-		vkDestroyBuffer(device->m_Device, buffer->m_Buffer, VK_NULL_HANDLE);
+		vkFreeMemory(device->m_VkDevice, buffer->m_Memory, VK_NULL_HANDLE);
+		vkDestroyBuffer(device->m_VkDevice, buffer->m_Buffer, VK_NULL_HANDLE);
 
 		delete buffer;
 		buffer = VK_NULL_HANDLE;
@@ -2482,7 +2482,7 @@ void SCommandList::Init(Device device)
 	VkFenceCreateInfo fence_create_info = {};
 	fence_create_info.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
 	fence_create_info.flags = VK_FENCE_CREATE_SIGNALED_BIT;
-	VkResult res = vkCreateFence(device->m_Device, &fence_create_info, VK_NULL_HANDLE, &m_WaitFence);
+	VkResult res = vkCreateFence(device->m_VkDevice, &fence_create_info, VK_NULL_HANDLE, &m_WaitFence);
 	ASSERT(res == VK_SUCCESS);
 
 	//commandbuffer
@@ -2491,7 +2491,7 @@ void SCommandList::Init(Device device)
 	cmd_buffer_alloc_info.commandPool = device->m_CommandPool;
 	cmd_buffer_alloc_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
 	cmd_buffer_alloc_info.commandBufferCount = 1;
-	res = vkAllocateCommandBuffers(device->m_Device, &cmd_buffer_alloc_info, &m_VkCommandBuffer);
+	res = vkAllocateCommandBuffers(device->m_VkDevice, &cmd_buffer_alloc_info, &m_VkCommandBuffer);
 	ASSERT(res == VK_SUCCESS);
 
 	//descriptor pool
@@ -2508,7 +2508,7 @@ void SCommandList::Init(Device device)
 	desc_pool_create_info.pPoolSizes = pool_sizes;
 	desc_pool_create_info.maxSets = 1024;
 
-	res = vkCreateDescriptorPool(device->m_Device, &desc_pool_create_info, VK_NULL_HANDLE, &m_DescriptorPool);
+	res = vkCreateDescriptorPool(device->m_VkDevice, &desc_pool_create_info, VK_NULL_HANDLE, &m_DescriptorPool);
 	ASSERT(res == VK_SUCCESS);
 
 	SBufferParams cb(1024 * 1024, HEAP_UPLOAD, CONSTANT_BUFFER, "ConstantBuffer");
@@ -2516,13 +2516,13 @@ void SCommandList::Init(Device device)
 	m_Constants.m_Cursor = 0;
 	m_Constants.m_Data = VK_NULL_HANDLE;
 
-	vkMapMemory(device->m_Device, m_Constants.m_Buffer->m_Memory, 0, m_Constants.m_Buffer->m_Size, 0, (void**)&m_Constants.m_Data);
+	vkMapMemory(device->m_VkDevice, m_Constants.m_Buffer->m_Memory, 0, m_Constants.m_Buffer->m_Size, 0, (void**)&m_Constants.m_Data);
 	
 	VkQueryPoolCreateInfo info = {};
 	info.sType = VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO;
 	info.queryType = VK_QUERY_TYPE_TIMESTAMP;
 	info.queryCount = MAX_QUERY_COUNT;
-	res = vkCreateQueryPool(device->m_Device, &info, VK_NULL_HANDLE, &m_QueryPool);
+	res = vkCreateQueryPool(device->m_VkDevice, &info, VK_NULL_HANDLE, &m_QueryPool);
 	ASSERT(res == VK_SUCCESS);
 
 	SBufferParams params(MAX_QUERY_COUNT * sizeof(uint64), HEAP_READBACK, NONE, "QueryBuffer");
@@ -2534,11 +2534,11 @@ void SCommandList::Destroy(Device device)
 {
 	delete m_RenderSetups;
 
-	vkDestroyFence(device->m_Device, m_WaitFence, VK_NULL_HANDLE);
-	vkDestroyDescriptorPool(device->m_Device, m_DescriptorPool, VK_NULL_HANDLE);
+	vkDestroyFence(device->m_VkDevice, m_WaitFence, VK_NULL_HANDLE);
+	vkDestroyDescriptorPool(device->m_VkDevice, m_DescriptorPool, VK_NULL_HANDLE);
 	DestroyBuffer(device, m_Constants.m_Buffer);
 
-	vkDestroyQueryPool(device->m_Device, m_QueryPool, VK_NULL_HANDLE);
+	vkDestroyQueryPool(device->m_VkDevice, m_QueryPool, VK_NULL_HANDLE);
 	DestroyBuffer(device, m_QueryBuffer);
 	DestroyBuffer(device, m_Staging.m_Buffer);
 }
@@ -2546,12 +2546,12 @@ void SCommandList::Destroy(Device device)
 void SCommandList::Begin(Device device, uint size)
 {
 	// Use a fence to wait until the command buffer has finished execution before using it again
-	VkResult res = vkWaitForFences(device->m_Device, 1, &m_WaitFence, VK_TRUE, UINT64_MAX);
+	VkResult res = vkWaitForFences(device->m_VkDevice, 1, &m_WaitFence, VK_TRUE, UINT64_MAX);
 	ASSERT(res == VK_SUCCESS);
-	res = vkResetFences(device->m_Device, 1, &m_WaitFence);
+	res = vkResetFences(device->m_VkDevice, 1, &m_WaitFence);
 	ASSERT(res == VK_SUCCESS);
 
-	vkResetDescriptorPool(device->m_Device, m_DescriptorPool, 0);
+	vkResetDescriptorPool(device->m_VkDevice, m_DescriptorPool, 0);
 	m_Constants.m_Cursor = 0;
 	for (auto& fb : *m_RenderSetups)
 		DestroyRenderSetup(device, fb);
@@ -2582,7 +2582,7 @@ void SCommandList::End(Device device)
 {
 	if (m_Staging.m_Data)
 	{
-		vkUnmapMemory(device->m_Device, m_Staging.m_Buffer->m_Memory);
+		vkUnmapMemory(device->m_VkDevice, m_Staging.m_Buffer->m_Memory);
 	}
 
 	if (m_QueryOffset)
@@ -2607,7 +2607,7 @@ uint32 AllocateBufferSlice(Device device, SlicedBuffer& buffer, uint size, uint 
 
 	if (buffer.m_Data == VK_NULL_HANDLE)
 	{
-		vkMapMemory(device->m_Device, buffer.m_Buffer->m_Memory, 0, buffer.m_Buffer->m_Size, 0, (void**) &buffer.m_Data);
+		vkMapMemory(device->m_VkDevice, buffer.m_Buffer->m_Memory, 0, buffer.m_Buffer->m_Size, 0, (void**) &buffer.m_Data);
 	}
 
 	buffer.m_Cursor = aligned_offset + size;
@@ -2721,7 +2721,7 @@ void Finish(Device device)
 {
 	//vkQueueWaitIdle(device->m_Queue);
 
-	VkResult res = vkWaitForFences(device->m_Device, 1, &device->m_MainContext->m_CmdList->m_WaitFence, VK_TRUE, UINT64_MAX);
+	VkResult res = vkWaitForFences(device->m_VkDevice, 1, &device->m_MainContext->m_CmdList->m_WaitFence, VK_TRUE, UINT64_MAX);
 	ASSERT(res == VK_SUCCESS);
 }
 
@@ -2733,7 +2733,7 @@ uint GetProfileData(Device device, SProfileData (&OutData)[MAX_QUERY_COUNT])
 	if (count)
 	{
 		uint64* data = VK_NULL_HANDLE;
-		vkMapMemory(device->m_Device, cmdList.m_QueryBuffer->m_Memory, 0, count * sizeof(uint64), 0, (void**) &data);
+		vkMapMemory(device->m_VkDevice, cmdList.m_QueryBuffer->m_Memory, 0, count * sizeof(uint64), 0, (void**) &data);
 
 		for (uint i = 0; i < count; i++)
 		{
@@ -2741,7 +2741,7 @@ uint GetProfileData(Device device, SProfileData (&OutData)[MAX_QUERY_COUNT])
 			OutData[i].m_Name = cmdList.m_QueryNames[i];
 		}
 
-		vkUnmapMemory(device->m_Device, cmdList.m_QueryBuffer->m_Memory);
+		vkUnmapMemory(device->m_VkDevice, cmdList.m_QueryBuffer->m_Memory);
 	}
 
 	return count;
@@ -2776,7 +2776,7 @@ uint8* MapBuffer(const SMapBufferParams& params)
 	}
 	else
 	{
-		vkMapMemory(params.m_Device->m_Device, params.m_Buffer->m_Memory, 0, params.m_Buffer->m_Size, 0, (void**) &data);
+		vkMapMemory(params.m_Device->m_VkDevice, params.m_Buffer->m_Memory, 0, params.m_Buffer->m_Size, 0, (void**) &data);
 		data += params.m_Offset;
 	}
 
@@ -2797,7 +2797,7 @@ void UnmapBuffer(const SMapBufferParams& params)
 	}
 	else
 	{
-		vkUnmapMemory(params.m_Device->m_Device, params.m_Buffer->m_Memory);
+		vkUnmapMemory(params.m_Device->m_VkDevice, params.m_Buffer->m_Memory);
 	}
 }
 uint GetWidth(Texture texture)
