@@ -23,6 +23,7 @@
 #include "../RootSignature.h"
 #include "../../Util/Array.h"
 #include <map>
+#include <unordered_map>
 #include <vector>
 #define VK_USE_PLATFORM_WIN32_KHR
 #include <vulkan/vulkan.h>
@@ -46,7 +47,7 @@ struct SCommandList
 	RenderSetupVector* m_RenderSetups;
 	VkFence m_WaitFence;
 	VkCommandBuffer m_VkCommandBuffer;
-	VkDescriptorPool m_DescriptorPool;
+	VkDescriptorPool m_VkDescriptorPool;
 	SlicedBuffer m_Constants;
 
 	SlicedBuffer m_Staging;
@@ -74,43 +75,60 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL VulkanCallback(VkDebugUtilsMessageSeverity
     OutputDebugStringA("\n\n");
 	return VK_FALSE;
 }
+template<>
+struct std::hash<SSamplerDesc>
+{
+	std::size_t operator()(SSamplerDesc const& s) const noexcept
+	{
+		std::size_t h1 = std::hash<int>{}(s.Filter);
+		std::size_t h2 = std::hash<int>{}(s.Aniso) ^ (h1 << 1);
+		std::size_t h3 = std::hash<int>{}(s.AddressModeU) ^ (h2 << 1);
+		std::size_t h4 = std::hash<int>{}(s.AddressModeV) ^ (h3 << 1);
+		std::size_t h5 = std::hash<int>{}(s.AddressModeW) ^ (h4 << 1);
+		std::size_t h6 = std::hash<int>{}(s.Comparison) ^ (h5 << 1);
+
+
+		return h6;
+	}
+};
+typedef std::unordered_map<SSamplerDesc, VkSampler> TSamplerDictionary;
 
 struct SDevice
 {
 	VkDevice m_VkDevice;
-	VkQueue m_GraphicsQueue;
-	uint    m_GraphicsQueueIndex;
+	VkQueue  m_VkGraphicsQueue;
+	uint     m_VkGraphicsQueueIndex;
 
 	HWND m_Window;
 
 	Context m_MainContext;
 	SCommandList m_CommandBuffers[BUFFER_FRAMES];
 	RenderPassDictionary* m_RenderpassDictionary;
-
+	TSamplerDictionary* m_SamplerDictionary;
 	Texture m_BackBuffer[BUFFER_FRAMES];
 
 	VkSemaphore m_PresentSemaphore;
-	uint32 m_SwapchainImageId;
+	uint32 m_VkSwapChainImageId;
 	bool m_WasAcquired;
 
-	VkCommandPool m_CommandPool;
-	VkDescriptorPool m_DescriptorPool;
+	VkCommandPool m_VkCommandPool;
+	VkDescriptorPool m_VkDescriptorPool;
 	RenderPass m_BackBufferRenderPass;
 
 	// Default states
 	BlendState m_DefaultBlendState;
 
-	VkPhysicalDevice m_PhysicalDevice;
+	VkPhysicalDevice m_VkPhysicalDevice;
 	float m_TimestampFrequency;
 	uint m_UniformBufferAlignment;
 	uint m_MaxDrawMeshTasksCount;
 	VkSampleCountFlags m_MSAASupportMask;
-	VkPhysicalDeviceMemoryProperties m_MemoryProperties;
+	VkPhysicalDeviceMemoryProperties m_VkMemoryProperties;
 
-	VkSwapchainCreateInfoKHR m_SwapchainCreateInfo;
-	VkSwapchainKHR m_SwapChain;
-	VkSurfaceKHR m_Surface;
-	VkInstance m_Instance;
+	VkSwapchainCreateInfoKHR m_VkSwapChainCreateInfo;
+	VkSwapchainKHR m_VkSwapChain;
+	VkSurfaceKHR m_VkSurface;
+	VkInstance m_VkInstance;
 
 	StaticArray<DisplayMode> m_DisplayModes;
 };
@@ -229,21 +247,22 @@ union SViewKey
 	SView view;
 	uint32 combo;
 };
+struct SRange
+{
+	ushort baseMipLevel, levelCount;
+	ushort baseArrayLayer, layerCount;
+};
 typedef std::map<uint32, VkImageView> TViewMap;
 struct STextureSubresource
 {
 	STexture* m_Owner;
 	STextureSubresource** m_Faces;//for cubemaps only 
 	TViewMap* m_Views;
-	VkImageSubresourceRange m_Range;
+	SRange m_Range;
 	EResourceState m_State;	
 };
 
-struct SRange
-{
-	ushort baseMipLevel, levelCount; 
-	ushort baseArrayLayer, layerCount;
-};
+
 union SRangeKey
 {
 	SRange range;
@@ -303,7 +322,6 @@ STextureSubresource* AcquireTextureSubresource(const SResourceDesc& resourceDesc
 			subResource->m_Range.levelCount = key.range.levelCount;
 			subResource->m_Range.baseArrayLayer = key.range.baseArrayLayer;
 			subResource->m_Range.layerCount = key.range.layerCount;
-			subResource->m_Range.aspectMask = IsDepthFormat(texture->m_Format) ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT;
 			subResource->m_Views = new TViewMap;
 			subResource->m_Faces = nullptr;
 			
@@ -331,7 +349,6 @@ STextureSubresource* AcquireTextureSubresource(const SResourceDesc& resourceDesc
 			face->m_Range.levelCount = subResource->m_Range.levelCount;
 			face->m_Range.baseArrayLayer = subResource->m_Range.baseArrayLayer + desc.face;
 			face->m_Range.layerCount = 1;
-			face->m_Range.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
 			face->m_Views = new TViewMap;
 			face->m_Faces = nullptr;
 		}
@@ -394,15 +411,17 @@ VkImageView AcquireTextureSubresourceView(Device device, const SResourceDesc& re
 		view = sub->m_Views->find(key.combo);
 		/**/
 		//todo: add stencil support
-		//todo: add cubemap support
 		VkImageViewCreateInfo view_create_info = {};
 		view_create_info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
 		view_create_info.image = sub->m_Owner->m_Image;
 		view_create_info.viewType = nativeType;
 		view_create_info.format = g_Formats[sub->m_Owner->m_Format];
 		view_create_info.components = { VK_COMPONENT_SWIZZLE_R, VK_COMPONENT_SWIZZLE_G, VK_COMPONENT_SWIZZLE_B, VK_COMPONENT_SWIZZLE_A };
-		view_create_info.subresourceRange = sub->m_Range;
-
+		view_create_info.subresourceRange.baseMipLevel = sub->m_Range.baseMipLevel;
+		view_create_info.subresourceRange.levelCount = sub->m_Range.levelCount;
+		view_create_info.subresourceRange.baseArrayLayer = sub->m_Range.baseArrayLayer;
+		view_create_info.subresourceRange.layerCount = sub->m_Range.layerCount; 
+		view_create_info.subresourceRange.aspectMask = IsDepthFormat(texture->m_Format) ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT;
 		VkResult res = vkCreateImageView(device->m_VkDevice, &view_create_info, VK_NULL_HANDLE, &view->second);
 		ASSERT(res == VK_SUCCESS);
 		return view->second;
@@ -515,11 +534,11 @@ static bool CreateBackBufferSetups(Device device, uint width, uint height, Image
 	// Get the swap chain images
 	VkImage back_buffers[BUFFER_FRAMES];
 	uint32_t image_count = 0;
-	VkResult res = vkGetSwapchainImagesKHR(device->m_VkDevice, device->m_SwapChain, &image_count, VK_NULL_HANDLE);
+	VkResult res = vkGetSwapchainImagesKHR(device->m_VkDevice, device->m_VkSwapChain, &image_count, VK_NULL_HANDLE);
 	if (res == VK_SUCCESS)
 	{
 		ASSERT(image_count == BUFFER_FRAMES);
-		res = vkGetSwapchainImagesKHR(device->m_VkDevice, device->m_SwapChain, &image_count, back_buffers);
+		res = vkGetSwapchainImagesKHR(device->m_VkDevice, device->m_VkSwapChain, &image_count, back_buffers);
 		if (res == VK_SUCCESS)
 		{
 			for (uint i = 0; i < BUFFER_FRAMES; i++)
@@ -656,16 +675,16 @@ static VkPhysicalDevice ChoosePhysicalDevice(VkInstance instance)
 
 static void CreateSwapchain(Device device, bool vsync)
 {
-	if (device->m_SwapChain)
-		vkDestroySwapchainKHR(device->m_VkDevice, device->m_SwapChain, VK_NULL_HANDLE);
+	if (device->m_VkSwapChain)
+		vkDestroySwapchainKHR(device->m_VkDevice, device->m_VkSwapChain, VK_NULL_HANDLE);
 
 	VkSurfaceCapabilitiesKHR surface_capabilities;
-	VkResult res = vkGetPhysicalDeviceSurfaceCapabilitiesKHR(device->m_PhysicalDevice, device->m_Surface, &surface_capabilities);
+	VkResult res = vkGetPhysicalDeviceSurfaceCapabilitiesKHR(device->m_VkPhysicalDevice, device->m_VkSurface, &surface_capabilities);
 	ASSERT(res == VK_SUCCESS);
 
-	device->m_SwapchainCreateInfo.presentMode = GetPresentMode(device->m_PhysicalDevice, device->m_Surface, vsync);
+	device->m_VkSwapChainCreateInfo.presentMode = GetPresentMode(device->m_VkPhysicalDevice, device->m_VkSurface, vsync);
 
-	res = vkCreateSwapchainKHR(device->m_VkDevice, &device->m_SwapchainCreateInfo, VK_NULL_HANDLE, &device->m_SwapChain);
+	res = vkCreateSwapchainKHR(device->m_VkDevice, &device->m_VkSwapChainCreateInfo, VK_NULL_HANDLE, &device->m_VkSwapChain);
 	ASSERT(res == VK_SUCCESS);
 }
 
@@ -966,21 +985,22 @@ Device CreateDevice(DeviceParams& params)
 	Device device = new SDevice;
 	memset(device, 0, sizeof(SDevice));
 	device->m_VkDevice = vk_device;
-	device->m_GraphicsQueue = graphics_queue;
-	device->m_GraphicsQueueIndex = graphics_queue_index;
+	device->m_VkGraphicsQueue = graphics_queue;
+	device->m_VkGraphicsQueueIndex = graphics_queue_index;
 	device->m_Window = hwnd;
-	device->m_PhysicalDevice = physical_device;
+	device->m_VkPhysicalDevice = physical_device;
 	device->m_TimestampFrequency = properties.limits.timestampPeriod * 1e-6f;
 	device->m_UniformBufferAlignment = (uint) properties.limits.minUniformBufferOffsetAlignment;
 	device->m_MaxDrawMeshTasksCount = mesh_shader_properties.maxDrawMeshTasksCount;
 	device->m_MSAASupportMask = properties.limits.framebufferColorSampleCounts & properties.limits.framebufferDepthSampleCounts;
-	device->m_MemoryProperties = memory_properties;
-	device->m_Surface = surface;
-	device->m_Instance = instance;
+	device->m_VkMemoryProperties = memory_properties;
+	device->m_VkSurface = surface;
+	device->m_VkInstance = instance;
 	device->m_RenderpassDictionary = new RenderPassDictionary;
+	device->m_SamplerDictionary = new TSamplerDictionary;
 
 	// Create swapchain
-	VkSwapchainCreateInfoKHR& swapchain_create_info = device->m_SwapchainCreateInfo;
+	VkSwapchainCreateInfoKHR& swapchain_create_info = device->m_VkSwapChainCreateInfo;
 	swapchain_create_info.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
 	swapchain_create_info.pNext = VK_NULL_HANDLE;
 	swapchain_create_info.flags = 0;
@@ -1016,7 +1036,7 @@ Device CreateDevice(DeviceParams& params)
 	cmd_pool_create_info.queueFamilyIndex = graphics_queue_index;
 	cmd_pool_create_info.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
 
-	res = vkCreateCommandPool(vk_device, &cmd_pool_create_info, VK_NULL_HANDLE, &device->m_CommandPool);
+	res = vkCreateCommandPool(vk_device, &cmd_pool_create_info, VK_NULL_HANDLE, &device->m_VkCommandPool);
 	ASSERT(res == VK_SUCCESS);
 
 	
@@ -1063,7 +1083,7 @@ Device CreateDevice(DeviceParams& params)
 	desc_pool_create_info.pPoolSizes = pool_sizes;
 	desc_pool_create_info.maxSets = 64;
 	desc_pool_create_info.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
-	res = vkCreateDescriptorPool(vk_device, &desc_pool_create_info, VK_NULL_HANDLE, &device->m_DescriptorPool);
+	res = vkCreateDescriptorPool(vk_device, &desc_pool_create_info, VK_NULL_HANDLE, &device->m_VkDescriptorPool);
 
 	ASSERT(res == VK_SUCCESS);
 	for (SCommandList& cmdList : device->m_CommandBuffers)
@@ -1094,12 +1114,12 @@ void DestroyDevice(Device& device)
 	Finish(device);
 #ifdef USE_DEBUG_UTILS
 	if (m_fnDestroyDebugUtilsMessengerEXT && VK_NULL_HANDLE != debugMessenger) {
-		m_fnDestroyDebugUtilsMessengerEXT(device->m_Instance, debugMessenger, nullptr);
+		m_fnDestroyDebugUtilsMessengerEXT(device->m_VkInstance, debugMessenger, nullptr);
 	}
 #endif
 	DestroyBlendState(device, device->m_DefaultBlendState);
 
-	vkDestroyDescriptorPool(device->m_VkDevice, device->m_DescriptorPool, VK_NULL_HANDLE);
+	vkDestroyDescriptorPool(device->m_VkDevice, device->m_VkDescriptorPool, VK_NULL_HANDLE);
 
 	DestroyBackBufferSetups(device);
 
@@ -1110,10 +1130,10 @@ void DestroyDevice(Device& device)
 	for (SCommandList& cmdList : device->m_CommandBuffers)
 		cmdList.Destroy(device);
 
-	vkDestroyCommandPool(device->m_VkDevice, device->m_CommandPool, VK_NULL_HANDLE);
+	vkDestroyCommandPool(device->m_VkDevice, device->m_VkCommandPool, VK_NULL_HANDLE);
 
-	vkDestroySwapchainKHR(device->m_VkDevice, device->m_SwapChain, VK_NULL_HANDLE);
-	vkDestroySurfaceKHR(device->m_Instance, device->m_Surface, VK_NULL_HANDLE);
+	vkDestroySwapchainKHR(device->m_VkDevice, device->m_VkSwapChain, VK_NULL_HANDLE);
+	vkDestroySurfaceKHR(device->m_VkInstance, device->m_VkSurface, VK_NULL_HANDLE);
 	for (auto& pass : *device->m_RenderpassDictionary)
 	{
 		DestroyRenderPass(device, pass.second);
@@ -1121,9 +1141,10 @@ void DestroyDevice(Device& device)
 
 
 	vkDestroyDevice(device->m_VkDevice, VK_NULL_HANDLE);
-	vkDestroyInstance(device->m_Instance, VK_NULL_HANDLE);
+	vkDestroyInstance(device->m_VkInstance, VK_NULL_HANDLE);
 
 	delete device->m_RenderpassDictionary;
+	delete device->m_SamplerDictionary;
 	delete device;
 	device = VK_NULL_HANDLE;
 }
@@ -1134,9 +1155,9 @@ void Present(Device device, bool vsync)
 	present_info.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
 	present_info.pNext = VK_NULL_HANDLE;
 	present_info.swapchainCount = 1;
-	present_info.pSwapchains = &device->m_SwapChain;
-	present_info.pImageIndices = &device->m_SwapchainImageId;
-	VkResult res = vkQueuePresentKHR(device->m_GraphicsQueue, &present_info);
+	present_info.pSwapchains = &device->m_VkSwapChain;
+	present_info.pImageIndices = &device->m_VkSwapChainImageId;
+	VkResult res = vkQueuePresentKHR(device->m_VkGraphicsQueue, &present_info);
 	ASSERT(res == VK_SUCCESS);
 }
 
@@ -1173,11 +1194,11 @@ uint GetBackBufferIndex(Device device)
 
 		// TODO: Evaluate if this really belongs here ...
 
-		VkResult res = vkAcquireNextImageKHR(device->m_VkDevice, device->m_SwapChain, UINT64_MAX, device->m_PresentSemaphore, VK_NULL_HANDLE, &device->m_SwapchainImageId);
+		VkResult res = vkAcquireNextImageKHR(device->m_VkDevice, device->m_VkSwapChain, UINT64_MAX, device->m_PresentSemaphore, VK_NULL_HANDLE, &device->m_VkSwapChainImageId);
 		ASSERT(res == VK_SUCCESS);
 	}
 
-	return device->m_SwapchainImageId;
+	return device->m_VkSwapChainImageId;
 }
 
 uint GetDisplayModeCount(Device device)
@@ -1264,8 +1285,8 @@ bool Resize(Device device, DeviceParams& params, int width, int height)
 
 	DebugString("Resize(%d, %d);", width, height);
 
-	device->m_SwapchainCreateInfo.imageExtent.width  = width;
-	device->m_SwapchainCreateInfo.imageExtent.height = height;
+	device->m_VkSwapChainCreateInfo.imageExtent.width  = width;
+	device->m_VkSwapChainCreateInfo.imageExtent.height = height;
 	CreateSwapchain(device, params.m_VSync);
 
 	UpdateWindow(device, params, width, height);
@@ -1356,7 +1377,7 @@ Texture CreateTexture(Device device, const STextureParams& params)
 	VkMemoryAllocateInfo mem_alloc_info = {};
 	mem_alloc_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
 	mem_alloc_info.allocationSize = mem_reqs.size;
-	mem_alloc_info.memoryTypeIndex = GetMemoryTypeIndex(device->m_MemoryProperties, mem_reqs.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+	mem_alloc_info.memoryTypeIndex = GetMemoryTypeIndex(device->m_VkMemoryProperties, mem_reqs.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 
 	VkDeviceMemory memory = VK_NULL_HANDLE;
 	res = vkAllocateMemory(device->m_VkDevice, &mem_alloc_info, VK_NULL_HANDLE, &memory);
@@ -1466,7 +1487,7 @@ void UpdateResourceTable(Device device, RootSignature root, uint32 slot, Resourc
 
 			Buffer buffer = (Buffer)resources[i].m_Resource;
 
-			descriptor_write.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+			descriptor_write.descriptorType = (item.m_Type == STRUCTUREDBUFFER) ? VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER : VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
 			descriptor_write.pImageInfo = VK_NULL_HANDLE;
 			descriptor_write.pBufferInfo = &buffer_info;
 
@@ -1521,7 +1542,7 @@ ResourceTable CreateResourceTable(Device device, RootSignature root, uint32 slot
 
 	VkDescriptorSetAllocateInfo info = {};
 	info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-	info.descriptorPool = onframe? onframe->m_CmdList->m_DescriptorPool:device->m_DescriptorPool;
+	info.descriptorPool = onframe? onframe->m_CmdList->m_VkDescriptorPool:device->m_VkDescriptorPool;
 	info.descriptorSetCount = 1;
 	info.pSetLayouts = &root->m_Slots[slot].m_DescriptorSetLayout;
 
@@ -1542,13 +1563,13 @@ void DestroyResourceTable(Device device, ResourceTable& table)
 {
 	if (table)
 	{
-		if (table->m_Pool != device->m_DescriptorPool)
+		if (table->m_Pool != device->m_VkDescriptorPool)
 		{
 			delete table;
 			table = VK_NULL_HANDLE;
 			return;
 		}
-		vkFreeDescriptorSets(device->m_VkDevice, device->m_DescriptorPool, 1, &table->m_DescriptorSet);
+		vkFreeDescriptorSets(device->m_VkDevice, device->m_VkDescriptorPool, 1, &table->m_DescriptorSet);
 		delete table;
 		table = VK_NULL_HANDLE;
 	}
@@ -1563,7 +1584,7 @@ SamplerTable CreateSamplerTable(Device device, RootSignature root, uint32 slot, 
 
 	VkDescriptorSetAllocateInfo alloc_info = {};
 	alloc_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-	alloc_info.descriptorPool = device->m_DescriptorPool;
+	alloc_info.descriptorPool = device->m_VkDescriptorPool;
 	alloc_info.descriptorSetCount = 1;
 	alloc_info.pSetLayouts = &root->m_Slots[slot].m_DescriptorSetLayout;
 
@@ -1629,14 +1650,14 @@ void DestroySamplerTable(Device device, SamplerTable& table)
 {
 	if (table)
 	{
-		if (table->m_Pool != device->m_DescriptorPool)
+		if (table->m_Pool != device->m_VkDescriptorPool)
 			return;
 
 		for (uint i = 0; i < table->m_Count; i++)
 		{
 			vkDestroySampler(device->m_VkDevice, table->m_Samplers[i], VK_NULL_HANDLE);
 		}
-		vkFreeDescriptorSets(device->m_VkDevice, device->m_DescriptorPool, 1, &table->m_DescriptorSet);
+		vkFreeDescriptorSets(device->m_VkDevice, device->m_VkDescriptorPool, 1, &table->m_DescriptorSet);
 
 		delete[] table;
 		table = VK_NULL_HANDLE;
@@ -1791,6 +1812,7 @@ RenderSetup CreateRenderSetup(Device device, RenderPass render_pass, Texture* co
 	}
 	fb.m_DepthTarget = { depth_target, {depth_slice} };
 	fb.m_ResolveTarget = resolve_target;
+	fb.m_ColorTargetCount = color_target_count;
 	return CreateRenderSetup(device, render_pass, fb);
 }
 RenderSetup CreateRenderSetup(Device device, RenderPass render_pass, SFrameBuffer& fb)
@@ -2380,7 +2402,7 @@ static void CreateUniformBufferDescriptorSet(Device device, VkBuffer buffer, siz
 {
 	VkDescriptorSetAllocateInfo info = {};
 	info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-	info.descriptorPool = device->m_DescriptorPool;
+	info.descriptorPool = device->m_VkDescriptorPool;
 	info.descriptorSetCount = 1;
 	info.pSetLayouts = descriptor_set_layout;
 	vkAllocateDescriptorSets(device->m_VkDevice, &info, &descriptor_set);
@@ -2440,7 +2462,7 @@ Buffer CreateBuffer(Device device, const SBufferParams& params)
 	VkMemoryAllocateInfo mem_alloc_info = {};
 	mem_alloc_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
 	mem_alloc_info.allocationSize = mem_reqs.size;
-	mem_alloc_info.memoryTypeIndex = GetMemoryTypeIndex(device->m_MemoryProperties, mem_reqs.memoryTypeBits, memory_bits);
+	mem_alloc_info.memoryTypeIndex = GetMemoryTypeIndex(device->m_VkMemoryProperties, mem_reqs.memoryTypeBits, memory_bits);
 
 	VkDeviceMemory memory = VK_NULL_HANDLE;
 	res = vkAllocateMemory(device->m_VkDevice, &mem_alloc_info, VK_NULL_HANDLE, &memory);
@@ -2488,7 +2510,7 @@ void SCommandList::Init(Device device)
 	//commandbuffer
 	VkCommandBufferAllocateInfo cmd_buffer_alloc_info = {};
 	cmd_buffer_alloc_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-	cmd_buffer_alloc_info.commandPool = device->m_CommandPool;
+	cmd_buffer_alloc_info.commandPool = device->m_VkCommandPool;
 	cmd_buffer_alloc_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
 	cmd_buffer_alloc_info.commandBufferCount = 1;
 	res = vkAllocateCommandBuffers(device->m_VkDevice, &cmd_buffer_alloc_info, &m_VkCommandBuffer);
@@ -2508,7 +2530,7 @@ void SCommandList::Init(Device device)
 	desc_pool_create_info.pPoolSizes = pool_sizes;
 	desc_pool_create_info.maxSets = 1024;
 
-	res = vkCreateDescriptorPool(device->m_VkDevice, &desc_pool_create_info, VK_NULL_HANDLE, &m_DescriptorPool);
+	res = vkCreateDescriptorPool(device->m_VkDevice, &desc_pool_create_info, VK_NULL_HANDLE, &m_VkDescriptorPool);
 	ASSERT(res == VK_SUCCESS);
 
 	SBufferParams cb(1024 * 1024, HEAP_UPLOAD, CONSTANT_BUFFER, "ConstantBuffer");
@@ -2535,7 +2557,7 @@ void SCommandList::Destroy(Device device)
 	delete m_RenderSetups;
 
 	vkDestroyFence(device->m_VkDevice, m_WaitFence, VK_NULL_HANDLE);
-	vkDestroyDescriptorPool(device->m_VkDevice, m_DescriptorPool, VK_NULL_HANDLE);
+	vkDestroyDescriptorPool(device->m_VkDevice, m_VkDescriptorPool, VK_NULL_HANDLE);
 	DestroyBuffer(device, m_Constants.m_Buffer);
 
 	vkDestroyQueryPool(device->m_VkDevice, m_QueryPool, VK_NULL_HANDLE);
@@ -2551,7 +2573,7 @@ void SCommandList::Begin(Device device, uint size)
 	res = vkResetFences(device->m_VkDevice, 1, &m_WaitFence);
 	ASSERT(res == VK_SUCCESS);
 
-	vkResetDescriptorPool(device->m_VkDevice, m_DescriptorPool, 0);
+	vkResetDescriptorPool(device->m_VkDevice, m_VkDescriptorPool, 0);
 	m_Constants.m_Cursor = 0;
 	for (auto& fb : *m_RenderSetups)
 		DestroyRenderSetup(device, fb);
@@ -2562,10 +2584,9 @@ void SCommandList::Begin(Device device, uint size)
 	{
 		SBufferParams params(size, HEAP_UPLOAD, VERTEX_BUFFER | INDEX_BUFFER | CONSTANT_BUFFER, "UploadBuffer");
 		m_Staging.m_Buffer = CreateBuffer(device, params);
+		m_Staging.m_Data = nullptr;
+		m_Staging.m_Cursor = 0;
 	}
-
-	m_Staging.m_Cursor = 0;
-	m_Staging.m_Data = VK_NULL_HANDLE;
 
 	m_QueryOffset = 0;
 
@@ -2583,8 +2604,16 @@ void SCommandList::End(Device device)
 	if (m_Staging.m_Data)
 	{
 		vkUnmapMemory(device->m_VkDevice, m_Staging.m_Buffer->m_Memory);
+		m_Staging.m_Data = nullptr;
+		m_Staging.m_Cursor = 0;
 	}
 
+	if (m_Constants.m_Data)
+	{
+		vkUnmapMemory(device->m_VkDevice, m_Constants.m_Buffer->m_Memory);
+		m_Constants.m_Data = nullptr;
+		m_Constants.m_Cursor = 0;
+	}
 	if (m_QueryOffset)
 	{
 		vkCmdCopyQueryPoolResults(m_VkCommandBuffer, m_QueryPool, 0, m_QueryOffset, m_QueryBuffer->m_Buffer, 0, sizeof(uint64), VK_QUERY_RESULT_64_BIT | VK_QUERY_RESULT_WAIT_BIT);
@@ -2675,7 +2704,7 @@ void BeginContext(Context context, uint upload_buffer_size, const char* name, bo
 	context->m_CurrentRenderSetup = nullptr;
 	memset(&context->m_CurrentFrameBufferDesc, 0, sizeof(SFrameBuffer));
 	
-	context->m_CmdList = &device->m_CommandBuffers[device->m_SwapchainImageId];
+	context->m_CmdList = &device->m_CommandBuffers[device->m_VkSwapChainImageId];
 
 	context->m_CmdList->Begin(device, upload_buffer_size);
 
@@ -2713,7 +2742,7 @@ void SubmitContexts(Device device, uint count, SContext** context)
 	submit_info.pCommandBuffers = &context[0]->m_CmdList->m_VkCommandBuffer;
 	submit_info.commandBufferCount = 1;
 
-	VkResult res = vkQueueSubmit(device->m_GraphicsQueue, 1, &submit_info, context[0]->m_CmdList->m_WaitFence);
+	VkResult res = vkQueueSubmit(device->m_VkGraphicsQueue, 1, &submit_info, context[0]->m_CmdList->m_WaitFence);
 	ASSERT(res == VK_SUCCESS);
 }
 
@@ -3187,8 +3216,8 @@ void Barrier(Context context, const SBarrierDesc* barriers, uint count)
 {
     VkImageMemoryBarrier img_barrier = {};
     img_barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-    img_barrier.srcQueueFamilyIndex = context->m_Device->m_GraphicsQueueIndex;
-    img_barrier.dstQueueFamilyIndex = context->m_Device->m_GraphicsQueueIndex;
+    img_barrier.srcQueueFamilyIndex = context->m_Device->m_VkGraphicsQueueIndex;
+    img_barrier.dstQueueFamilyIndex = context->m_Device->m_VkGraphicsQueueIndex;
     uint image_count = 0;
 
     VkMemoryBarrier mem_barrier = {};
