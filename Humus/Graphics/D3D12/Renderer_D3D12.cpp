@@ -265,7 +265,7 @@ void SCommandList::Init(Device device)
 	ID3D12GraphicsCommandList* d3d_cmdlist = nullptr;
 	hr = device->m_pD3DDevice->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, m_pD3DAllocator, nullptr, __uuidof(ID3D12GraphicsCommandList*), (void**)&d3d_cmdlist);
 	ASSERT(SUCCEEDED(hr));
-
+	this->m_pD3DList = d3d_cmdlist;
 	// D3D dumbfuckery
 	d3d_cmdlist->Close();
 
@@ -304,6 +304,7 @@ void SCommandList::Init(Device device)
 	m_Constants.m_Buffer = CreateBuffer(device, cb);
 	m_Constants.m_Cursor = 0;
 	m_Constants.m_Data = nullptr;
+	m_RenderSetups = new RenderSetupVector;
 
 }
 
@@ -871,13 +872,7 @@ Device CreateDevice(DeviceParams& params)
 	device->m_MSAASupportMask = 1;
 	device->m_RenderpassDictionary = new RenderPassDictionary;//for further impl of dz12 renderpass
 	device->m_SamplerDictionary = new TSamplerDictionary;
-	device->m_ResourceHeap.Init(device->m_pD3DDevice, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, 256, true);
-	device->m_SamplerHeap.Init(device->m_pD3DDevice, D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER, 64, true);
 
-	device->m_ResourceDescriptorsCPU.Init(device->m_pD3DDevice, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, 256 * 16, false);
-	device->m_SamplerDescriptorsCPU.Init(device->m_pD3DDevice, D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER, 64, false);
-	device->m_RTDescriptorsCPU.Init(device->m_pD3DDevice, D3D12_DESCRIPTOR_HEAP_TYPE_RTV, 64, false);
-	device->m_DSDescriptorsCPU.Init(device->m_pD3DDevice, D3D12_DESCRIPTOR_HEAP_TYPE_DSV, 64, false);
 	D3D12_FEATURE_DATA_MULTISAMPLE_QUALITY_LEVELS levels = {};
 	levels.Format = sc_desc.Format;
 	for (levels.SampleCount = 2; levels.SampleCount <= 8; levels.SampleCount *= 2)
@@ -945,7 +940,13 @@ Device CreateDevice(DeviceParams& params)
 	device->m_pD3DDevice->CreateFence(0, D3D12_FENCE_FLAG_NONE, __uuidof(ID3D12Fence), (void**)&device->m_PresentFence);
 	device->m_PresentFenceEvent = CreateEvent(nullptr, FALSE, FALSE, nullptr);
 	device->m_PresentFenceCounter = 0;
+	device->m_ResourceHeap.Init(device->m_pD3DDevice, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, 256, true);
+	device->m_SamplerHeap.Init(device->m_pD3DDevice, D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER, 64, true);
 
+	device->m_ResourceDescriptorsCPU.Init(device->m_pD3DDevice, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, 256 * 16, false);
+	device->m_SamplerDescriptorsCPU.Init(device->m_pD3DDevice, D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER, 64, false);
+	device->m_RTDescriptorsCPU.Init(device->m_pD3DDevice, D3D12_DESCRIPTOR_HEAP_TYPE_RTV, 64, false);
+	device->m_DSDescriptorsCPU.Init(device->m_pD3DDevice, D3D12_DESCRIPTOR_HEAP_TYPE_DSV, 64, false);
 	for (uint i = 0; i < BUFFER_FRAMES; i++)
 	{
 		device->m_CommandLists[i].Init(device);
@@ -1665,7 +1666,7 @@ SD3DViewDescriptor AcquireBufferView(Device device, Buffer buffer, const SBuffer
 			desc.BufferLocation = buffer->m_Buffer->GetGPUVirtualAddress() + viewDesc.m_range.offset;
 			desc.SizeInBytes = viewDesc.m_range.size;
 			device->m_pD3DDevice->CreateConstantBufferView(&desc, result.handle);
-
+			break;
 		default:
 			ASSERT(false);
 		}
@@ -1720,6 +1721,7 @@ void UpdateResourceTable(Device device, RootSignature root, uint32 slot, Resourc
 			SBufferViewDesc viewDesc = { item.m_Type, resources[i].m_bufRange };
 			descriptor = AcquireBufferView(device, buffer, viewDesc);
 			updates[i] = descriptor.handle;
+			break;
 		}
 		default:
 			ASSERT(false);
@@ -1737,11 +1739,13 @@ void UpdateResourceTable(Device device, RootSignature root, uint32 slot, Resourc
 }
 ResourceTable CreateResourceTable(Device device, RootSignature root, uint32 slot, const SResourceDesc* resources, uint count, Context onframe)
 {
+	ASSERT(count);
 	SDescriptorHeap* heap = onframe? &onframe->m_CmdList->m_ResourceHeap:&device->m_ResourceHeap;
 	
 	ResourceTable rt = new SResourceTable();
 	rt->m_Offset = heap->Allocate(count);
 	rt->m_Size = count;
+	rt->m_Heap = heap;
 	if (resources)
 	{
 		UpdateResourceTable(device, root, slot, rt, resources, 0, count);
@@ -1753,6 +1757,12 @@ void DestroyResourceTable(Device device, ResourceTable& table)
 {
 	if (table)
 	{
+		if (table->m_Heap != &device->m_ResourceHeap)
+		{
+			delete table;
+			table = nullptr;
+			return;
+		}
 		device->m_ResourceHeap.Release(table->m_Offset, table->m_Size);
 
 		delete table;
@@ -1800,8 +1810,8 @@ void UpdateSamplerTable(Device device, RootSignature root, uint32 slot, SamplerT
 		{
 			device->m_SamplerDictionary->insert(TSamplerDictionary::value_type(sampler_desc, {}));
 			itSampler = device->m_SamplerDictionary->find(sampler_desc);
-			itSampler->second = device->m_SamplerHeap.m_CPUDescStart;
-			itSampler->second.ptr += device->m_SamplerHeap.Allocate(1)* device->m_SamplerHeap.m_DescSize;
+			itSampler->second = device->m_SamplerDescriptorsCPU.m_CPUDescStart;
+			itSampler->second.ptr += device->m_SamplerDescriptorsCPU.Allocate(1)* device->m_SamplerHeap.m_DescSize;
 			device->m_pD3DDevice->CreateSampler(&desc, itSampler->second);
 
 		}
@@ -1811,13 +1821,16 @@ void UpdateSamplerTable(Device device, RootSignature root, uint32 slot, SamplerT
 
 
 }
-SamplerTable CreateSamplerTable(Device device, RootSignature root, uint32 slot, const SSamplerDesc* sampler_descs, uint count)
+SamplerTable CreateSamplerTable(Device device, RootSignature root, uint32 slot, const SSamplerDesc* sampler_descs, uint count, Context onframe)
 {
-	SDescriptorHeap* heap = &device->m_SamplerHeap;
+	ASSERT(count);
+
+	SDescriptorHeap* heap = onframe? &onframe->m_CmdList->m_SamplerHeap:&device->m_SamplerHeap;
 
 	SamplerTable st = new SSamplerTable;
 	st->m_Offset = heap->Allocate(count);
 	st->m_Count = count;
+	st->m_Heap = heap;
 	if (sampler_descs)
 	{
 		UpdateSamplerTable(device, root, slot, st, sampler_descs, 0, count);
@@ -1831,6 +1844,12 @@ void DestroySamplerTable(Device device, SamplerTable& table)
 {
 	if (table)
 	{
+		if (table->m_Heap != &device->m_SamplerHeap)
+		{
+			delete table;
+			table = nullptr;
+			return;
+		}
 		device->m_SamplerHeap.Release(table->m_Offset, table->m_Count);
 
 		delete table;
@@ -1943,16 +1962,17 @@ RootSignature CreateRootSignature(Device device, const SCodeBlob& blob)
 			const SRootSlot& slot = root_header->m_Slots[i];
 			if (slot.m_Type == RESOURCE_TABLE || slot.m_Type == SAMPLER_TABLE)
 			{
-				resource_table_items += slot.m_Size;
+				table_count += slot.m_Size;
 			}
 		}
 		rootheadersize = root_slots_size + table_count * sizeof(SResourceTableItem);
 	}
+	else
+		rootheadersize = sizeof(SRoot);
 
 	ID3D12RootSignature* root = nullptr;
 	HRESULT hr = device->m_pD3DDevice->CreateRootSignature(0, (char*)blob.m_Code + rootheadersize, blob.m_Size - rootheadersize, __uuidof(ID3D12RootSignature), (void **) &root);
-	if (FAILED(hr))
-		return nullptr;
+	ASSERT(SUCCEEDED(hr));
 
 	RootSignature root_sig = new SRootSignature();
 	root_sig->m_Root = root;

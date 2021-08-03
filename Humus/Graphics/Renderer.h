@@ -380,8 +380,8 @@ struct SSamplerDesc
 	}
 };
 
-no_inline SamplerTable CreateSamplerTable(Device device, RootSignature root, uint32 slot, const SSamplerDesc* sampler_descs, uint count);
-template<int N> force_inline SamplerTable CreateSamplerTable(Device device, RootSignature root, uint32 slot, const SSamplerDesc(&samplers)[N]) { return CreateSamplerTable(device, root, slot, samplers, N); }
+no_inline SamplerTable CreateSamplerTable(Device device, RootSignature root, uint32 slot, const SSamplerDesc* sampler_descs, uint count, Context onframe = nullptr);
+template<int N> force_inline SamplerTable CreateSamplerTable(Device device, RootSignature root, uint32 slot, const SSamplerDesc(&samplers)[N], Context onframe = nullptr) { return CreateSamplerTable(device, root, slot, samplers, N, onframe); }
 void DestroySamplerTable(Device device, SamplerTable& table);
 enum RenderPassFlags:uint8
 {

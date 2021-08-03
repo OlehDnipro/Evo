@@ -763,13 +763,6 @@ static Error WriteCppHeader(FILE* file, const char* header, size_t header_size, 
 			return INVALID_ROOTSIG;
 		}
 
-		WriteD3DBlob(file, blob->GetBufferPointer(), blob->GetBufferSize(), "RootSig");
-
-
-		if (errors)
-			errors->Release();
-		if (blob)
-			blob->Release();
 	}
 
 	const int count = (int) items.size();
@@ -785,7 +778,7 @@ static Error WriteCppHeader(FILE* file, const char* header, size_t header_size, 
 	}
 
 
-	const size_t slots_size = sizeof(SRoot) + (count - 1) * sizeof(SRootSlot);
+	const size_t slots_size = sizeof(SRoot) + (count > 0 ? count - 1 : 0 ) * sizeof(SRootSlot);
 	size_t total_size = slots_size + resource_table_item_count * sizeof(SResourceTableItem);
 	size_t rootheader_size = total_size;
 	if (api == D3D12)

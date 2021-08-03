@@ -203,7 +203,7 @@ public:
 	void DestroyRootSignature(Device device);
 	RootSignature GetRootSignature() { return m_RootSig; }
 	void UpdateResourceTable(Device, uint32 slot, ResourceTable table);
-
+	uint32 GetDescriptorsCount(uint32 slot);
 private:
 	struct TableUpdate
 	{

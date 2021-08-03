@@ -97,7 +97,7 @@ void main(uint3 DTid : SV_DispatchThreadID)
    
    uint index = x + y*res.x + face*res.x*res.y;
 
-	ShPoly base;
+	ShPoly base = (ShPoly)0;
    base.coef[0].x = 282095;  
    base.coef[0].y = 488603 * direction[1];  
    base.coef[0].z = 488603 * direction[2];  

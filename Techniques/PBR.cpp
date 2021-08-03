@@ -133,7 +133,8 @@ void CSphereGeometry::Draw(Context context, CShaderCache& cache, int resources_s
 
 				cache.GatherParameters(context, &prov[0], 1);
 
-				ResourceTable rt = CreateResourceTable(GetDevice(context), cache.GetRootSignature(), resources_slot, nullptr, 0, context);
+				ResourceTable rt = CreateResourceTable(GetDevice(context), cache.GetRootSignature(), resources_slot, nullptr,
+					cache.GetDescriptorsCount(resources_slot), context);
 
 				cache.UpdateResourceTable(GetDevice(context), resources_slot, rt);
 

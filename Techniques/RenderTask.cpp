@@ -127,7 +127,8 @@ void IObjectCollection::Draw(Context context, CShaderCache& cache,  int resource
 			continue;
 		IParameterProvider* prov = m_ObjectInstances[i]->GetModelProvider();
 		cache.GatherParameters(context, &prov, 1);
-		ResourceTable rt = CreateResourceTable(GetDevice(context), cache.GetRootSignature(), resources_slot, nullptr, 0, context);
+		ResourceTable rt = CreateResourceTable(GetDevice(context), cache.GetRootSignature(), resources_slot, nullptr, 
+			cache.GetDescriptorsCount(resources_slot), context);
 
 		cache.UpdateResourceTable(GetDevice(context), resources_slot, rt);
 
@@ -154,7 +155,10 @@ bool CShaderCache::CreateRootSignature(Device device, const SCodeBlob& code, TGe
 	IterateRootSignature(m_RootSig, &CShaderCache::FindRootResource, this);
 	return true;
 }
-
+uint32 CShaderCache::GetDescriptorsCount(uint32 slot)
+{
+	return  m_TableUpdates[slot].m_Descriptors.size();
+}
 void CShaderCache::UpdateResourceTable(Device device, uint32 slot, ResourceTable table)
 {
 	::UpdateResourceTable(device, m_RootSig, slot, table,

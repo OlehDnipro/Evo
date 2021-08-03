@@ -111,7 +111,8 @@ void CComputeSHTask::Execute(Context context, Pass pass)
 		},
 		NSH::Resources, 0);
 
-	ResourceTable rt = CreateResourceTable(GetDevice(context), m_Cache.GetRootSignature(), NSH::Resources, nullptr, 0, context);
+	ResourceTable rt = CreateResourceTable(GetDevice(context), m_Cache.GetRootSignature(), NSH::Resources, nullptr, 
+		m_Cache.GetDescriptorsCount(NSH::Resources), context);
 
 	m_Cache.UpdateResourceTable(GetDevice(context), NSH::Resources, rt);
 

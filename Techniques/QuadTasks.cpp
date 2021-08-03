@@ -17,7 +17,8 @@ void CTexturedQuadGeometry::Draw(Context context, CShaderCache& cache, int resou
 	{
 		cache.GatherParameters({ m_Texture }, resources_slot, m_TexDescIndex);
 	}
-	ResourceTable rt = CreateResourceTable(GetDevice(context), cache.GetRootSignature(), resources_slot, nullptr, 0, context);
+	ResourceTable rt = CreateResourceTable(GetDevice(context), cache.GetRootSignature(), resources_slot, nullptr, 
+		cache.GetDescriptorsCount(resources_slot), context);
 
 	cache.UpdateResourceTable(GetDevice(context), resources_slot, rt);
 

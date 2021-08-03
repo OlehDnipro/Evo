@@ -1575,7 +1575,7 @@ void DestroyResourceTable(Device device, ResourceTable& table)
 	}
 }
 
-SamplerTable CreateSamplerTable(Device device, RootSignature root, uint32 slot, const SSamplerDesc* sampler_descs, uint count)
+SamplerTable CreateSamplerTable(Device device, RootSignature root, uint32 slot, const SSamplerDesc* sampler_descs, uint count, Context onframe)
 {
 	ASSERT(slot < root->m_SlotCount);
 	ASSERT(count == root->m_Slots[slot].m_Size);
@@ -1584,7 +1584,7 @@ SamplerTable CreateSamplerTable(Device device, RootSignature root, uint32 slot, 
 
 	VkDescriptorSetAllocateInfo alloc_info = {};
 	alloc_info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-	alloc_info.descriptorPool = device->m_VkDescriptorPool;
+	alloc_info.descriptorPool = onframe ? onframe->m_CmdList->m_VkDescriptorPool : device->m_VkDescriptorPool;
 	alloc_info.descriptorSetCount = 1;
 	alloc_info.pSetLayouts = &root->m_Slots[slot].m_DescriptorSetLayout;
 
