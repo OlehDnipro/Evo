@@ -42,13 +42,14 @@ bool CComputeSHTask::CreateResources(Device device)
 							HeapType::HEAP_DEFAULT,
 							Usage::SHADER_RESOURCE,
 							nullptr };
-
+	params.m_Stride = sizeof(ShPoly);
 	m_Provider.m_BaseBuffer = CreateBuffer(m_Device, params);
 	
 	params.m_Size = sizeof(ShPoly) * m_Provider.m_SumBufferSize;
 	params.m_HeapType = HeapType::HEAP_DEFAULT;
 	params.m_Usage = Usage::SHADER_RESOURCE;
 	params.m_Name = nullptr;
+	params.m_Stride = sizeof(ShPoly);
 	m_Provider.m_SumBuffer = CreateBuffer(m_Device, params);
 
 	params.m_Size = sizeof(ShPoly) * m_Provider.m_SumBufferSize;
@@ -130,8 +131,6 @@ void CComputeSHTask::Execute(Context context, Pass pass)
 		Barrier(context, { { m_SumBufferReadback , EResourceState::RS_TRANSFER_DST } });
 
 		CopyBuffer(context, m_SumBufferReadback, (Buffer)m_Provider.m_SumBuffer.m_Resource);
-
-		Barrier(context, { { m_SumBufferReadback , EResourceState::RS_TRANSFER_SRC } });
 	}
 	else
 	{

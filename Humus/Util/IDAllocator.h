@@ -51,7 +51,7 @@ private:
 	Range* m_Ranges; // Sorted array of ranges of free IDs
 	uint m_Count;    // Number of ranges in list
 	uint m_Capacity; // Total capacity of range list
-
+	uint m_InitSize;
 public:
 	void Init(const uint max_id)
 	{
@@ -61,11 +61,13 @@ public:
 		m_Ranges[0].m_Last = max_id;
 		m_Count = 1;
 		m_Capacity = 1;
+		m_InitSize = max_id;
 	}
 
 	void Clear()
 	{
 		::free(m_Ranges);
+		Init(m_InitSize);
 	}
 
 

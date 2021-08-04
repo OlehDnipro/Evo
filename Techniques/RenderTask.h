@@ -100,8 +100,13 @@ public:
 	T& Get() { return m_data; }
 	void PrepareBuffer(Context context)
 	{
-		uint offset = AllocateConstantsSlice(context, sizeof(T));
-		m_param = { GetConstantBuffer(context), { offset, sizeof(T) } };
+		uint size = sizeof(T);
+#if GRAPHICS_API_D3D12
+		size = ((size - 1) / 256 + 1) * 256;
+#endif
+		uint offset = AllocateConstantsSlice(context, size );
+		
+		m_param = { GetConstantBuffer(context), { offset, size} };
 		uint8* gpuDest =  GetConstantBufferData(context, m_param.m_bufRange.offset);
 		memcpy(gpuDest, &m_data, sizeof(T));
 	}

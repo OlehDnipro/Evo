@@ -245,6 +245,8 @@ public:
 		m_Shadows.SetShadowMap(m_ShadowMap);
 		m_Shadows.SetPlanarReflectionParam(ReflectionMatrix(float3(3.75, -0.25, 1.75), float3(0, 1, 0)), float4(0, 1, 0, 0.25));
 		m_Shadows.SetCubeProjection(true);
+		Barrier(context, { { m_ShadowMap,  EResourceState::RS_SHADER_READ} });
+
 		Barrier(context, { { m_CubeMap,  EResourceState::RS_RENDER_TARGET} });
 		Barrier(context, { { m_CubeDepth,  EResourceState::RS_RENDER_TARGET} });
 		vec3 eye(3.25, 0.75, 1.75);
@@ -368,17 +370,20 @@ public:
 	void DrawFrame(Context context, uint buffer_index)
 	{
 		static bool SHReady = false;
+#ifndef GRAPHICS_API_D3D12
 		if (!SHReady)
 		{
 			m_ComputeSHTask.Execute(context, CComputeSHTask::Pass::ComputeTex);
 			SHReady = true;
 		}
+#endif
 		static uint frame = 0;
 		float depthFar[2] = { 1,0 };
 		float gray[4] = { 0.5, 0.5, 0.5, 0.5 };
 		float black[4] = { 0,0,0,0 };
 		float blue[4] = { 0.3,0.5,0.7, 1 };
-        SetRenderTarget(context, { (Texture)nullptr }, 0);
+#ifndef GRAPHICS_API_D3D12
+		SetRenderTarget(context, { (Texture)nullptr }, 0);
         Barrier(context, { { m_ShadowMap,  EResourceState::RS_RENDER_TARGET} });
 		for (int i = 0; i < SHADOW_MAP_CASCADE_COUNT; i++)
 		{
@@ -388,6 +393,7 @@ public:
 			m_Shadows.Draw(context);
 			EndRenderPass(context);
 		}
+
         Barrier(context, { { m_ShadowMap,  EResourceState::RS_SHADER_READ} });
         SetDepthTarget(context, { (Texture)nullptr });
 		float delta = m_Timer.GetFrameTime();
@@ -430,6 +436,7 @@ public:
 
 			m_CurDropTex = 1 - m_CurDropTex;
 		}
+
 		SetRenderTarget(context, m_Reflection, 0);
 		SetDepthTarget(context, m_DepthBuffer);
 		Barrier(context, { {m_Reflection , EResourceState::RS_RENDER_TARGET} });
@@ -438,7 +445,7 @@ public:
 		m_Shadows.Draw(context);
 		EndRenderPass(context);
 		Barrier(context, { { m_Reflection , EResourceState::RS_SHADER_READ} });
-
+#endif
 		Texture bb = GetBackBuffer(GetDevice(), buffer_index);
 		SetRenderTarget(context, bb, 0);
 		SetDepthTarget(context, m_DepthBuffer);
@@ -450,12 +457,14 @@ public:
 		m_Shadows.Draw(context);
 		m_PBR.Draw(context);
 		EndRenderPass(context);
-
+#ifndef GRAPHICS_API_D3D12
 		BeginRenderPass(context, "Water", false, false);
 		m_WaterTask.Draw(context);
 		EndRenderPass(context);
-
+#endif
         Barrier(context, { { bb , EResourceState::RS_PRESENT} });
+
+
 		frame++;
 	};
 };
@@ -635,7 +644,9 @@ int WINAPI WinMain(HINSTANCE hThisInst, HINSTANCE /*hLastInst*/, LPSTR /*lpszCmd
 //	flag |= _CRTDBG_DELAY_FREE_MEM_DF;
 	_CrtSetDbgFlag(flag); // Set flag to the new value
 #endif
-
+#ifdef GRAPHICS_API_D3D12
+	HMODULE handle = LoadLibraryA("renderdoc.dll"); // renderdoc must be loaded before DX dlls
+#endif
 //	initCPU();
 
 	// Make sure we're running in the exe's path

@@ -61,6 +61,7 @@ struct SDescriptorHeap
 
 	IDAllocator m_Allocator;
 	uint m_Size;
+	uint m_Occupied;
 	void Init(ID3D12Device* d3d_device, D3D12_DESCRIPTOR_HEAP_TYPE heap_type, uint size, bool shader_visible)
 	{
 		m_Allocator.Init(size - 1);
@@ -75,11 +76,13 @@ struct SDescriptorHeap
 		m_GPUDescStart = m_DescHeap->GetGPUDescriptorHandleForHeapStart();
 		m_DescSize = d3d_device->GetDescriptorHandleIncrementSize(desc.Type);
 		m_Size = size;
+		m_Occupied = 0;
 	}
 	void Reset()
 	{
 		ASSERT(m_Allocator.GetAvailableIDs() <= m_Size);
 		m_Allocator.Clear();
+		m_Occupied = 0;
 	}
 
 	void Destroy()
@@ -88,6 +91,7 @@ struct SDescriptorHeap
 
 		ASSERT(m_Allocator.GetAvailableIDs() <= m_Size);
 		m_Allocator.Clear();
+		m_Occupied = 0;
 	}
 
 	uint Allocate(uint count)
@@ -95,7 +99,7 @@ struct SDescriptorHeap
 		uint index;
 		bool res = m_Allocator.CreateRangeID(index, count);
 		ASSERT(res);
-
+		m_Occupied += count;
 		return index;
 	}
 
@@ -103,6 +107,7 @@ struct SDescriptorHeap
 	{
 		bool res = m_Allocator.DestroyRangeID(offset, count);
 		ASSERT(res);
+		m_Occupied -= count;
 	}
 
 	inline D3D12_CPU_DESCRIPTOR_HANDLE GetCPUHandle(uint offset) const
@@ -297,7 +302,7 @@ void SCommandList::Init(Device device)
 	m_FenceEvent = CreateEvent(nullptr, FALSE, FALSE, nullptr);
 	m_FenceCounter = m_FenceValue = 0;
 
-	m_ResourceHeap.Init(device->m_pD3DDevice, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, 256, true);
+	m_ResourceHeap.Init(device->m_pD3DDevice, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, 256*16, true);
 	m_SamplerHeap.Init(device->m_pD3DDevice, D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER, 64, true);
 
 	SBufferParams cb(1024 * 1024, HEAP_UPLOAD, CONSTANT_BUFFER, "ConstantBuffer");
@@ -341,7 +346,6 @@ void SCommandList::Begin(Device device, uint size)
 	m_SamplerHeap.Reset();
 	m_ResourceHeap.Reset();
 
-	ResetViews(m_Constants.m_Buffer);
 	m_Constants.m_Cursor = 0;
 	for (auto& fb : *m_RenderSetups)
 		DestroyRenderSetup(device, fb);
@@ -388,6 +392,9 @@ void SCommandList::End(Device device)
 struct SContext
 {
 	SCommandList* m_CmdList;
+	SDescriptorHeap* m_CurrentResourceHeap;
+	SDescriptorHeap* m_CurrentSamplerHeap;
+
 	RootSignature m_CurrentRootSignature;
 	SFrameBuffer m_CurrentFrameBufferDesc;
 	RenderSetup m_CurrentRenderSetup;
@@ -423,7 +430,7 @@ uint32 AllocateBufferSlice(Device device, SlicedBuffer& buffer, uint size, uint 
 uint32 AllocateConstantsSlice(Context context, uint size)
 {
 	Device device = GetDevice(context);
-	uint32 offset = AllocateBufferSlice(device, context->m_CmdList->m_Constants, size, 16/*device->m_UniformBufferAlignment*/);
+	uint32 offset = AllocateBufferSlice(device, context->m_CmdList->m_Constants, ((size - 1) / 256 + 1)*256, 16/*device->m_UniformBufferAlignment*/);
 	return offset;
 }
 Buffer GetConstantBuffer(Context context)
@@ -481,6 +488,27 @@ static const DXGI_FORMAT g_Formats[] =
 };
 static_assert(elementsof(g_Formats) == IMGFMT_D16 + 1, "g_Formats incorrect length");
 
+D3D12_RESOURCE_STATES GetResourceState(EResourceState state, bool isDepth)
+{
+	switch (state)
+	{
+	case RS_PRESENT:
+		return D3D12_RESOURCE_STATE_PRESENT;
+	case RS_SHADER_READ:
+		return  D3D12_RESOURCE_STATE_GENERIC_READ;
+	case RS_RENDER_TARGET:
+		return isDepth? D3D12_RESOURCE_STATE_DEPTH_WRITE : D3D12_RESOURCE_STATE_RENDER_TARGET;
+	case RS_TRANSFER_DST:
+		return D3D12_RESOURCE_STATE_COPY_DEST;
+	case RS_TRANSFER_SRC:
+		return D3D12_RESOURCE_STATE_COPY_SOURCE;
+	case RS_UNORDERED_ACCESS:
+		return D3D12_RESOURCE_STATE_COMMON;
+	default:
+		ASSERT(false);
+	};
+}
+
 static const DXGI_FORMAT g_AttribFormats[] =
 {
 	DXGI_FORMAT_R32_FLOAT,
@@ -504,6 +532,12 @@ enum TexViewUsage
 	UAV,
 	RTV,
 	DSV
+};
+enum DSV_Flags:uint
+{
+	None = 0,
+	ReadOnlyDepth = 1,
+	ReadOnlyStencil = 2,
 };
 enum TextureViewFlags :uint8
 {
@@ -559,6 +593,7 @@ struct STexture
 	uint m_MipLevels;
 	TextureType m_Type;
 	ImageFormat m_Format;
+	EResourceState m_OnCreationState;
 };
 
 
@@ -654,6 +689,7 @@ static bool CreateBackBufferSetups(Device device, uint width, uint height)
 		texture->m_MipLevels = 1;
 		texture->m_Type      = TEX_2D;
 		texture->m_Format    = IMGFMT_RGBA8;
+		texture->m_OnCreationState	 = RS_PRESENT;
 
 		device->m_BackBuffer[i] = texture;
 	}
@@ -754,8 +790,9 @@ Device CreateDevice(DeviceParams& params)
 		d3d_debug->EnableDebugLayer();
 		d3d_debug->Release();
 	}
-#endif
 
+#endif	
+	
 	IDXGIFactory2* dxgi_factory = nullptr;
 	if (FAILED(CreateDXGIFactory2(flags, __uuidof(IDXGIFactory2), (void **) &dxgi_factory)))
 	{
@@ -820,6 +857,12 @@ Device CreateDevice(DeviceParams& params)
 		ErrorMsg("Device creation failed");
 		return nullptr;
 	}
+#ifdef DEBUG
+	ID3D12InfoQueue* myInfoQueue;
+	d3d_device->QueryInterface(IID_PPV_ARGS(&myInfoQueue));
+	ASSERT(myInfoQueue);
+	myInfoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_ERROR, true);
+#endif
 
 	D3D12_COMMAND_QUEUE_DESC queue_desc = {};
 	queue_desc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
@@ -1301,12 +1344,13 @@ Texture CreateTexture(Device device, const STextureParams& params)
 	heap_prop.Type = D3D12_HEAP_TYPE_DEFAULT;
 
 	D3D12_HEAP_FLAGS flags = D3D12_HEAP_FLAG_NONE;
+	uint ifCube6 = (params.m_Type == TEX_CUBE || params.m_Type == TEX_CUBE_ARRAY) ? 6 : 1;
 
 	D3D12_RESOURCE_DESC desc = {};
 	desc.Dimension        = (params.m_Type <= TEX_1D_ARRAY)? D3D12_RESOURCE_DIMENSION_TEXTURE1D : (params.m_Type <= TEX_CUBE_ARRAY)? D3D12_RESOURCE_DIMENSION_TEXTURE2D : D3D12_RESOURCE_DIMENSION_TEXTURE3D;
 	desc.Width            = params.m_Width;
 	desc.Height           = params.m_Height;
-	desc.DepthOrArraySize = (uint16) ((params.m_Type == TEX_3D)? params.m_Depth : params.m_Slices);
+	desc.DepthOrArraySize = (uint16) ((params.m_Type == TEX_3D)? params.m_Depth : ifCube6*params.m_Slices);
 	desc.MipLevels        = (uint16) params.m_MipCount;
 	desc.Format           = g_Formats[params.m_Format];
 	desc.SampleDesc.Count = params.m_MSAASampleCount;
@@ -1323,19 +1367,21 @@ Texture CreateTexture(Device device, const STextureParams& params)
 	if (params.m_UnorderedAccess)
 		desc.Flags |= D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
 
-
+	EResourceState state = EResourceState::RS_TRANSFER_DST;
 	D3D12_RESOURCE_STATES resource_state = D3D12_RESOURCE_STATE_COPY_DEST;
 	D3D12_CLEAR_VALUE clear_value = {};
 
 	if (params.m_DepthTarget)
 	{
 		resource_state = D3D12_RESOURCE_STATE_DEPTH_WRITE;
+		state = EResourceState::RS_RENDER_TARGET;
 		clear_value.Format = desc.Format;
 		if (params.m_ClearValue)
 			clear_value.DepthStencil.Depth = *params.m_ClearValue;
 	}
 	else if (params.m_RenderTarget)
 	{
+		state = EResourceState::RS_RENDER_TARGET;
 		resource_state = D3D12_RESOURCE_STATE_RENDER_TARGET;
 		if (params.m_ClearValue)
 		{
@@ -1364,6 +1410,7 @@ Texture CreateTexture(Device device, const STextureParams& params)
 	texture->m_MipLevels = params.m_MipCount;
 	texture->m_Type      = params.m_Type;
 	texture->m_Format    = params.m_Format;
+	texture->m_OnCreationState = state;
 	return texture;
 }
 void DestroyTextureSubresource(Device device, STextureSubresource* sub)
@@ -1446,7 +1493,7 @@ STextureSubresource* AcquireTextureSubresource(const SResourceDesc& resourceDesc
 			subResource->m_Range.layerCount = key.range.layerCount;
 			subResource->m_Views = new TViewMap;
 			subResource->m_Faces = nullptr;
-
+			subResource->m_State = texture->m_OnCreationState;// todo: check hierarchy
 			texture->m_SubresourceDictionary->insert(TextureSubresourceDictionary::value_type(key.combo, subResource));
 		}
 		else
@@ -1473,6 +1520,7 @@ STextureSubresource* AcquireTextureSubresource(const SResourceDesc& resourceDesc
 			face->m_Range.layerCount = 1;
 			face->m_Views = new TViewMap;
 			face->m_Faces = nullptr;
+			face->m_State = texture->m_OnCreationState;// todo: check hierarchy
 		}
 		return face;
 	}
@@ -1494,7 +1542,11 @@ SD3DViewDescriptor AcquireD3DViewInternal(Device device, SDescriptorHeap* heap, 
 	view.m_viewType = usageType;
 	T desc = FillD3DViewDesc<T>(sub->m_Range, type);
 	desc.Format = g_Formats[sub->m_Owner->m_Format];
-
+	if (usageType == SRV)
+	{
+		if(sub->m_Owner->m_Format == ImageFormat::IMGFMT_D16)//needed for all depth
+			desc.Format = g_Formats[ImageFormat::IMGFMT_R16];
+	}
 	view.m_dimension = type;
 
 	SViewKey key; key.view = view;
@@ -1560,7 +1612,6 @@ SD3DViewDescriptor AcquireTextureSubresourceView(Device device, const SResourceD
 
 
 	SDescriptorHeap* heap = nullptr;
-
 	switch (usageType)
 	{
 	case SRV:
@@ -1642,7 +1693,7 @@ SD3DViewDescriptor AcquireBufferView(Device device, Buffer buffer, const SBuffer
 			desc.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
 
 			params.FirstElement = viewDesc.m_range.offset / buffer->m_Stride;
-			params.NumElements = viewDesc.m_range.size / buffer->m_Stride;
+			params.NumElements = viewDesc.m_range.size == 0 ? buffer->m_Size / buffer->m_Stride : viewDesc.m_range.size / buffer->m_Stride;
 			params.StructureByteStride = buffer->m_Stride;
 			device->m_pD3DDevice->CreateShaderResourceView(buffer->m_Buffer, &desc, result.handle);
 			break;
@@ -1655,7 +1706,7 @@ SD3DViewDescriptor AcquireBufferView(Device device, Buffer buffer, const SBuffer
 			desc.ViewDimension = D3D12_UAV_DIMENSION_BUFFER;
 			D3D12_BUFFER_UAV& params = desc.Buffer;
 			params.FirstElement = viewDesc.m_range.offset / buffer->m_Stride;
-			params.NumElements = viewDesc.m_range.size / buffer->m_Stride;
+			params.NumElements = viewDesc.m_range.size == 0 ? buffer->m_Size / buffer->m_Stride : viewDesc.m_range.size / buffer->m_Stride;
 			params.StructureByteStride = buffer->m_Stride;
 			device->m_pD3DDevice->CreateUnorderedAccessView(buffer->m_Buffer, nullptr,&desc, result.handle);
 
@@ -1679,12 +1730,13 @@ void ResetViews(Buffer buffer)
 	{
 		view.second.heap->Release(view.second.heapOffset, 1);
 	}
+	buffer->m_Views->clear();
 }
 void UpdateResourceTable(Device device, RootSignature root, uint32 slot, ResourceTable table, const SResourceDesc* resources, uint offset, uint count, const uint8* reflectionFlags)
 {
 	D3D12_CPU_DESCRIPTOR_HANDLE* updates = StackAlloc<D3D12_CPU_DESCRIPTOR_HANDLE>(count);
-	D3D12_CPU_DESCRIPTOR_HANDLE destination = table->m_Heap->m_CPUDescStart;
-	destination.ptr += table->m_Offset * table->m_Heap->m_DescSize;
+	D3D12_CPU_DESCRIPTOR_HANDLE* destination = StackAlloc<D3D12_CPU_DESCRIPTOR_HANDLE>(count);
+	uint* sizes = StackAlloc<uint>(count);
 
 	const SRootSignature::SRootSlot& root_slot = root->m_Slots[slot];
 	uint binding = offset;
@@ -1693,6 +1745,9 @@ void UpdateResourceTable(Device device, RootSignature root, uint32 slot, Resourc
 
 	for (uint i = offset; i < offset + count; i++)
 	{
+		destination[i] = table->m_Heap->m_CPUDescStart;
+		destination[i].ptr += (table->m_Offset + i) * table->m_Heap->m_DescSize;
+		sizes[i] = 1;
 		const SResourceTableItem& item = root_slot.m_Items[binding];
 		SD3DViewDescriptor descriptor;
 		switch (item.m_Type)
@@ -1734,7 +1789,8 @@ void UpdateResourceTable(Device device, RootSignature root, uint32 slot, Resourc
 			element = 0;
 		}
 	}
-	device->m_pD3DDevice->CopyDescriptorsSimple(count, table->m_Heap->m_CPUDescStart, updates[0], D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+	// todo: optimize
+	device->m_pD3DDevice->CopyDescriptors(count, &destination[0], &sizes[0], count, &updates[0], &sizes[0], D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 
 }
 ResourceTable CreateResourceTable(Device device, RootSignature root, uint32 slot, const SResourceDesc* resources, uint count, Context onframe)
@@ -1773,9 +1829,8 @@ void UpdateSamplerTable(Device device, RootSignature root, uint32 slot, SamplerT
 {
 
 	D3D12_CPU_DESCRIPTOR_HANDLE* updates = StackAlloc<D3D12_CPU_DESCRIPTOR_HANDLE>(count);
-	D3D12_CPU_DESCRIPTOR_HANDLE destination = table->m_Heap->m_CPUDescStart;
-	destination.ptr += table->m_Offset * table->m_Heap->m_DescSize;
-
+	D3D12_CPU_DESCRIPTOR_HANDLE* destination = StackAlloc<D3D12_CPU_DESCRIPTOR_HANDLE>(count);
+	uint* sizes = StackAlloc<uint>(count);
 
 	static const D3D12_FILTER filters[] =
 	{
@@ -1787,8 +1842,12 @@ void UpdateSamplerTable(Device device, RootSignature root, uint32 slot, SamplerT
 	};
 
 
-	for (uint i = 0; i < count; i++)
+	for (uint i = offset; i < offset + count; i++)
 	{
+		destination[i] = table->m_Heap->m_CPUDescStart;
+		destination[i].ptr += (table->m_Offset + i) * table->m_Heap->m_DescSize;
+		sizes[i] = 1;
+
 		const SSamplerDesc& sampler_desc = sampler_descs[i];
 
 		D3D12_SAMPLER_DESC desc;
@@ -1811,13 +1870,13 @@ void UpdateSamplerTable(Device device, RootSignature root, uint32 slot, SamplerT
 			device->m_SamplerDictionary->insert(TSamplerDictionary::value_type(sampler_desc, {}));
 			itSampler = device->m_SamplerDictionary->find(sampler_desc);
 			itSampler->second = device->m_SamplerDescriptorsCPU.m_CPUDescStart;
-			itSampler->second.ptr += device->m_SamplerDescriptorsCPU.Allocate(1)* device->m_SamplerHeap.m_DescSize;
+			itSampler->second.ptr += device->m_SamplerDescriptorsCPU.Allocate(1)* device->m_SamplerDescriptorsCPU.m_DescSize;
 			device->m_pD3DDevice->CreateSampler(&desc, itSampler->second);
 
 		}
 		updates[i] = itSampler->second;
 	}
-	device->m_pD3DDevice->CopyDescriptorsSimple(count, table->m_Heap->m_CPUDescStart, updates[0], D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER);
+	device->m_pD3DDevice->CopyDescriptors(count, &destination[0], &sizes[0], count, &updates[0], &sizes[0], D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER);
 
 
 }
@@ -1913,7 +1972,7 @@ RenderSetup CreateRenderSetup(Device device, RenderPass render_pass, SFrameBuffe
 	setup->m_Width = width;
 	setup->m_Height = height;
 	setup->m_Pass = render_pass;
-
+	setup->m_ColorBufferCount = 0;
 	uint i = 0;
 	for (SResourceDesc& color_target : fb.m_ColorTargets)
 	{
@@ -1921,6 +1980,7 @@ RenderSetup CreateRenderSetup(Device device, RenderPass render_pass, SFrameBuffe
 		{
 			 SD3DViewDescriptor descr = AcquireTextureSubresourceView(device, color_target, TexViewUsage::RTV);
 			 setup->m_ColorTargets[i] = descr.handle;
+			 setup->m_ColorBufferCount++;
 		}
 		i++;
 	}
@@ -2243,8 +2303,22 @@ Buffer CreateBuffer(Device device, const SBufferParams& params)
 	desc.MipLevels        = 1;
 	desc.SampleDesc.Count = 1;
 	desc.Layout           = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+	desc.Flags			  = (params.m_HeapType == HEAP_DEFAULT)?D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS: D3D12_RESOURCE_FLAG_NONE;// to do: regulae with params
+	EResourceState state;
+	D3D12_RESOURCE_STATES resource_state;
+	switch (params.m_HeapType)
+	{
+	case HEAP_DEFAULT:
+	case HEAP_UPLOAD:
+		state = EResourceState::RS_SHADER_READ;
+		resource_state = D3D12_RESOURCE_STATE_GENERIC_READ;
+		break;
+	case HEAP_READBACK:
+		state = EResourceState::RS_TRANSFER_DST;
+		resource_state = D3D12_RESOURCE_STATE_COPY_DEST;
+		break;
 
-	D3D12_RESOURCE_STATES resource_state = D3D12_RESOURCE_STATE_GENERIC_READ;
+	}
 
 	ID3D12Resource* d3d_buffer = nullptr;
 	HRESULT hr = device->m_pD3DDevice->CreateCommittedResource(&heap_prop, flags, &desc, resource_state, nullptr, __uuidof(ID3D12Resource), (void**) &d3d_buffer);
@@ -2259,6 +2333,7 @@ Buffer CreateBuffer(Device device, const SBufferParams& params)
 	buffer->m_HeapType = params.m_HeapType;
 	buffer->m_Stride = params.m_Stride;
 	buffer->m_Views = new TBufferViewMap;
+	buffer->m_State = state;
 	return buffer;
 }
 
@@ -2326,10 +2401,6 @@ void BeginContext(Context context, uint upload_buffer_size, const char* name, bo
 
 	context->m_CmdList->Begin(device, upload_buffer_size);
 
-	ID3D12DescriptorHeap* heaps[] = { context->m_Device->m_ResourceHeap.m_DescHeap, context->m_CmdList->m_SamplerHeap.m_DescHeap,
-									device->m_ResourceHeap.m_DescHeap, device->m_SamplerHeap.m_DescHeap, };
-	context->m_CmdList->m_pD3DList->SetDescriptorHeaps(4, heaps);
-
 	BeginMarker(context, name);
 }
 
@@ -2343,8 +2414,6 @@ void EndContext(Context context)
 	}
 
 	context->m_CmdList->End(device);
-
-	context->m_CmdList = nullptr;
 }
 
 void SubmitContexts(Device device, uint count, SContext** context)
@@ -2572,13 +2641,14 @@ void BeginRenderPass(Context context, const char* name, bool clearColor, bool cl
 	Device device = context->m_Device;
 	SRenderPassDesc passDesc; memset(&passDesc, 0, sizeof(SRenderPassDesc));
 	passDesc.msaa_samples = 1;
-	passDesc.m_ColorTargetCount = context->m_CurrentFrameBufferDesc.m_ColorTargetCount;
+	passDesc.m_ColorTargetCount = 0;
 	int index = 0;
 	for (SResourceDesc& color_target : context->m_CurrentFrameBufferDesc.m_ColorTargets)
 	{
 		if (color_target.m_Resource)
 		{
 			passDesc.m_ColorFormats[index] = ((Texture)color_target.m_Resource)->m_Format;
+			passDesc.m_ColorTargetCount++;
 		}
 		index++;
 	}
@@ -2622,7 +2692,7 @@ void BeginRenderPass(Context context, const char* name, const RenderPass render_
 		}
 	}
 
-	context->m_CmdList->m_pD3DList->OMSetRenderTargets(count, &setup->m_ColorTargets[0], true, &setup->m_DepthTarget);
+	context->m_CmdList->m_pD3DList->OMSetRenderTargets(count, &setup->m_ColorTargets[0], true, setup->m_DepthTarget.ptr? &setup->m_DepthTarget: nullptr);
 
 	D3D12_VIEWPORT vp;
 	vp.TopLeftX = 0.0f;
@@ -2676,6 +2746,9 @@ void EndRenderPass(Context context, const RenderSetup setup)
 void SetRootSignature(Context context, const RootSignature root)
 {
 	context->m_CmdList->m_pD3DList->SetGraphicsRootSignature(root->m_Root);
+	context->m_CmdList->m_pD3DList->SetComputeRootSignature(root->m_Root);
+	context->m_CurrentResourceHeap = nullptr;
+	context->m_CurrentSamplerHeap = nullptr;
 }
 
 void SetPipeline(Context context, const Pipeline pipeline)
@@ -2754,25 +2827,45 @@ void SetRootTextureBuffer(Context context, uint slot, const Buffer buffer)
 
 void SetGraphicsResourceTable(Context context, uint slot, const ResourceTable table)
 {
-	D3D12_GPU_DESCRIPTOR_HANDLE handle = context->m_CmdList->m_ResourceHeap.GetGPUHandle(table->m_Offset);
+	if (context->m_CurrentResourceHeap != table->m_Heap)
+	{
+		context->m_CurrentResourceHeap = table->m_Heap;
+		context->m_CmdList->m_pD3DList->SetDescriptorHeaps(1, &table->m_Heap->m_DescHeap);
+	}
+	D3D12_GPU_DESCRIPTOR_HANDLE handle = table->m_Heap->GetGPUHandle(table->m_Offset);
 	context->m_CmdList->m_pD3DList->SetGraphicsRootDescriptorTable(slot, handle);
 }
 
 void SetComputeResourceTable(Context context, uint slot, const ResourceTable table)
 {
-	D3D12_GPU_DESCRIPTOR_HANDLE handle = context->m_CmdList->m_ResourceHeap.GetGPUHandle(table->m_Offset);
+	if (context->m_CurrentResourceHeap != table->m_Heap)
+	{
+		context->m_CurrentResourceHeap = table->m_Heap;
+		context->m_CmdList->m_pD3DList->SetDescriptorHeaps(1, &table->m_Heap->m_DescHeap);
+	}
+	D3D12_GPU_DESCRIPTOR_HANDLE handle = table->m_Heap->GetGPUHandle(table->m_Offset);
 	context->m_CmdList->m_pD3DList->SetComputeRootDescriptorTable(slot, handle);
 }
 
 void SetGraphicsSamplerTable(Context context, uint slot, const SamplerTable table)
 {
-	D3D12_GPU_DESCRIPTOR_HANDLE handle = context->m_CmdList->m_SamplerHeap.GetGPUHandle(table->m_Offset);
+	if (context->m_CurrentSamplerHeap != table->m_Heap)
+	{
+		context->m_CurrentSamplerHeap = table->m_Heap;
+		context->m_CmdList->m_pD3DList->SetDescriptorHeaps(1, &table->m_Heap->m_DescHeap);
+	}
+	D3D12_GPU_DESCRIPTOR_HANDLE handle = table->m_Heap->GetGPUHandle(table->m_Offset);
 	context->m_CmdList->m_pD3DList->SetGraphicsRootDescriptorTable(slot, handle);
 }
 
 void SetComputeSamplerTable(Context context, uint slot, const SamplerTable table)
 {
-	D3D12_GPU_DESCRIPTOR_HANDLE handle = context->m_CmdList->m_SamplerHeap.GetGPUHandle(table->m_Offset);
+	if (context->m_CurrentSamplerHeap != table->m_Heap)
+	{
+		context->m_CurrentSamplerHeap = table->m_Heap;
+		context->m_CmdList->m_pD3DList->SetDescriptorHeaps(1, &table->m_Heap->m_DescHeap);
+	}
+	D3D12_GPU_DESCRIPTOR_HANDLE handle = table->m_Heap->GetGPUHandle(table->m_Offset);
 	context->m_CmdList->m_pD3DList->SetComputeRootDescriptorTable(slot, handle);
 }
 
@@ -2832,29 +2925,32 @@ void Barrier(Context context, const SBarrierDesc* barriers, uint count)
 	auto ProcessBarriers = [](const SResourceDesc& desc, uint* toCount, D3D12_RESOURCE_BARRIER* outBarriers, D3D12_RESOURCE_BARRIER* templ, EResourceState transition)
 	{
 		STextureSubresource* sub =  AcquireTextureSubresource(desc);
-		const Texture texture = (Texture)desc.m_Resource;
-		/*STextureSubresourceDesc range = desc.m_texRange;
-		bool isCube = texture->m_Type == TEX_CUBE || texture->m_Type == TEX_CUBE_ARRAY;
-		uint ifCube6 = isCube ? 6 : 1;
-		uint baseMipLevel = range.mip == -1 ? 0 : range.mip;
-		uint levelCount = range.mip == -1 ? texture->m_MipLevels : 1;
-		uint baseArrayLayer = range.slice == -1 ? 0 : ifCube6 * range.slice + (range.face == -1 ? 0 : range.face);
-		uint layerCount = range.slice == -1 ? ifCube6 * texture->m_Slices : (range.face == -1 ? ifCube6 : 1);*/
-		if (toCount)
-			*toCount += sub->m_Range.layerCount * sub->m_Range.layerCount;
-		if (outBarriers)
+		if (sub->m_State != transition)// todo: uav case
 		{
-			for (int curMip = sub->m_Range.baseMipLevel; curMip <= sub->m_Range.baseMipLevel + sub->m_Range.levelCount; curMip++)
+			const Texture texture = (Texture)desc.m_Resource;
+			/*STextureSubresourceDesc range = desc.m_texRange;
+			bool isCube = texture->m_Type == TEX_CUBE || texture->m_Type == TEX_CUBE_ARRAY;
+			uint ifCube6 = isCube ? 6 : 1;
+			uint baseMipLevel = range.mip == -1 ? 0 : range.mip;
+			uint levelCount = range.mip == -1 ? texture->m_MipLevels : 1;
+			uint baseArrayLayer = range.slice == -1 ? 0 : ifCube6 * range.slice + (range.face == -1 ? 0 : range.face);
+			uint layerCount = range.slice == -1 ? ifCube6 * texture->m_Slices : (range.face == -1 ? ifCube6 : 1);*/
+			if (toCount)
+				*toCount += sub->m_Range.layerCount * sub->m_Range.layerCount;
+			if (outBarriers)
 			{
-				for (int curLayer = sub->m_Range.baseArrayLayer; curLayer <= sub->m_Range.baseArrayLayer + sub->m_Range.layerCount; curLayer++)
+				for (int curMip = sub->m_Range.baseMipLevel; curMip <= sub->m_Range.baseMipLevel + sub->m_Range.levelCount; curMip++)
 				{
-					D3D12_RESOURCE_BARRIER& currBarrier = *outBarriers;
-					currBarrier = *templ;
-					currBarrier.Transition.Subresource = curMip + curLayer * texture->m_MipLevels;
-					outBarriers++;
+					for (int curLayer = sub->m_Range.baseArrayLayer; curLayer <= sub->m_Range.baseArrayLayer + sub->m_Range.layerCount; curLayer++)
+					{
+						D3D12_RESOURCE_BARRIER& currBarrier = *outBarriers;
+						currBarrier = *templ;
+						currBarrier.Transition.Subresource = curMip + curLayer * texture->m_MipLevels;
+						outBarriers++;
+					}
 				}
+				sub->m_State = transition;
 			}
-			sub->m_State = transition;
 		}
 
 	};
@@ -2865,8 +2961,13 @@ void Barrier(Context context, const SBarrierDesc* barriers, uint count)
 			ProcessBarriers(barriers[i].m_Desc, &barrCount, nullptr, nullptr, barriers[i].m_Transition);
 		}
 		else
-			barrCount++;
+		{
+			if(barriers[i].m_Transition != ((Buffer)barriers[i].m_Desc.m_Resource)->m_State)// todo: uav case
+				barrCount++;
+		}
 	}
+	if (!barrCount)
+		return;
 	D3D12_RESOURCE_BARRIER* outBarriers = StackAlloc<D3D12_RESOURCE_BARRIER>(barrCount);
 
 	uint curr = 0;
@@ -2877,25 +2978,32 @@ void Barrier(Context context, const SBarrierDesc* barriers, uint count)
 		{
 		case RESTYPE_TEXTURE:
 			{
-				const Texture texture = (Texture)barriers[i].m_Desc.m_Resource;
-				EResourceState before = GetCurrentState(barriers[i].m_Desc);
+				STextureSubresource* sub =  AcquireTextureSubresource(barriers[i].m_Desc);
+				const Texture texture = sub->m_Owner;
 
-				STextureSubresourceDesc range = barriers[i].m_Desc.m_texRange;
+				EResourceState before = sub->m_State;
 
-				D3D12_RESOURCE_BARRIER templateDesc;
-				templateDesc.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
-				templateDesc.Transition.pResource = texture->m_Texture;
-				templateDesc.Transition.StateBefore = (D3D12_RESOURCE_STATES)before;
-				templateDesc.Transition.StateAfter = (D3D12_RESOURCE_STATES)barriers[i].m_Transition;
-				if (range.slice == -1)
+				if (before != barriers[i].m_Transition)// todo: uav case
 				{
-					templateDesc.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
-					outBarriers[curr] = templateDesc;
-					curr++;
-				}
-				else
-				{
-					ProcessBarriers(barriers[i].m_Desc, &curr, &outBarriers[curr], &templateDesc, barriers[i].m_Transition);
+					STextureSubresourceDesc range = barriers[i].m_Desc.m_texRange;
+
+					D3D12_RESOURCE_BARRIER templateDesc;
+					templateDesc.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
+					templateDesc.Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+					templateDesc.Transition.pResource = texture->m_Texture;
+					templateDesc.Transition.StateBefore = GetResourceState(before, IsDepthFormat(texture->m_Format));
+					templateDesc.Transition.StateAfter = GetResourceState(barriers[i].m_Transition, IsDepthFormat(texture->m_Format));
+					if (range.slice == -1)
+					{
+						templateDesc.Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+						outBarriers[curr] = templateDesc;
+						sub->m_State = barriers[i].m_Transition;
+						curr++;
+					}
+					else
+					{
+						ProcessBarriers(barriers[i].m_Desc, &curr, &outBarriers[curr], &templateDesc, barriers[i].m_Transition);
+					}
 				}
 			}
 			break;
@@ -2903,11 +3011,17 @@ void Barrier(Context context, const SBarrierDesc* barriers, uint count)
 			{
 				Buffer buffer = (Buffer)barriers[i].m_Desc.m_Resource;
 				EResourceState before = GetCurrentState(barriers[i].m_Desc);
-				outBarriers[i].Transition.pResource = buffer->m_Buffer;
-				outBarriers[curr].Transition.StateBefore = (D3D12_RESOURCE_STATES)before;
-				outBarriers[curr].Transition.StateAfter = (D3D12_RESOURCE_STATES)barriers[i].m_Transition;
-				curr++;
-				buffer->m_State = barriers[i].m_Transition;
+				if (before != barriers[i].m_Transition)// todo: uav case
+				{
+					outBarriers[i].Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
+					outBarriers[i].Type = D3D12_RESOURCE_BARRIER_TYPE_TRANSITION;
+					outBarriers[i].Transition.pResource = buffer->m_Buffer;
+					outBarriers[i].Transition.Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES;
+					outBarriers[curr].Transition.StateBefore = GetResourceState(before, false);
+					outBarriers[curr].Transition.StateAfter = GetResourceState(barriers[i].m_Transition, false);
+					curr++;
+					buffer->m_State = barriers[i].m_Transition;
+				}
 
 			}
 			break;
@@ -2918,6 +3032,7 @@ void Barrier(Context context, const SBarrierDesc* barriers, uint count)
 	}
 	context->m_CmdList->m_pD3DList->ResourceBarrier(count, outBarriers);
 }
+
 template<>
 D3D12_SHADER_RESOURCE_VIEW_DESC FillD3DViewDesc<D3D12_SHADER_RESOURCE_VIEW_DESC>(SRange range, TextureType type)
 {
