@@ -32,10 +32,11 @@ void CTexturedQuadGeometry::Draw(Context context, CShaderCache& cache, int resou
 }
 void CTexturedQuadGeometry::Create(Device device)
 {
-	CTexturedQuadGeometry::Create(device, { { {-1,  1, 0},  {0, 0} },
+	CTexturedQuadGeometry::Create(device, { 
+											{ {-1,  1, 0},  {0, 0} },
 											{ { 1,  1, 0},  {1, 0} },
-											{ { 1, -1, 0},  {1, 1} },
-											{ {-1, -1, 0},  {0, 1} }
+											{ {-1, -1, 0},  {0, 1} },
+											{ { 1, -1, 0},  {1, 1} }
 										  });
 }
 void CTexturedQuadGeometry::Create(Device device,const QuadVertex (&vtx)[4])
@@ -47,7 +48,7 @@ void CTexturedQuadGeometry::Create(Device device,const QuadVertex (&vtx)[4])
 	SMapBufferParams mapParam = { GetMainContext(device), m_VB, 0, 4 * sizeof(QuadVertex) };
 	QuadVertex* vertices = (QuadVertex*)MapBuffer(mapParam);
 	//PRIM_TRIANGLE_FAN
-	memcpy(vertices, &vtx[0], 4 * sizeof(QuadVertex));
+	memcpy(vertices, &vtx[0], 4* sizeof(QuadVertex));
 	UnmapBuffer(mapParam);
 	m_Texture = nullptr;
 }
@@ -61,7 +62,7 @@ CTexturedQuadGeometry::~CTexturedQuadGeometry()
 void CPolygonGeometry::Draw(Context context, CShaderCache& cache, int resources_slot)
 {
 	SetVertexSetup(context, m_VertexSetup);
-	::Draw(context, 0, m_sideCount);
+	::Draw(context, 0, (m_sideCount - 2) * 3);
 }
 
 void CPolygonGeometry::DefineVertexFormat(vector<AttribDesc>& format)
@@ -72,20 +73,29 @@ void CPolygonGeometry::DefineVertexFormat(vector<AttribDesc>& format)
 void CPolygonGeometry::Create(Device device)
 {
 	m_Device = device;
-	SBufferParams params = { m_sideCount * sizeof(float2), HEAP_DEFAULT, Usage::VERTEX_BUFFER, "" };
+	SBufferParams params = { ( m_sideCount-2 ) * 3 * sizeof(float2), HEAP_DEFAULT, Usage::VERTEX_BUFFER, "" };
 	m_VB = CreateBuffer(m_Device, params);
 	m_VertexSetup = CreateVertexSetup(device, m_VB, sizeof(float2));
 }
 
 void CPolygonGeometry::UpdatePos(float radius, float2 pos)
 {
-	SMapBufferParams mapParam = { GetMainContext(m_Device), m_VB, 0, m_sideCount * sizeof(float2) };
+	SMapBufferParams mapParam = { GetMainContext(m_Device), m_VB, 0, (m_sideCount - 2) * 3 * sizeof(float2) };
 	float2* vertices = (float2*)MapBuffer(mapParam);
 	float step = 2 * PI / m_sideCount, curAngle = 0;
-	for (int i = 0; i < m_sideCount; i++)
+	int vert = 1;
+	auto getPos = [](float2 pos, float angleStep, float radius, int index)
 	{
-		vertices[i] = { pos.x + radius*cos(curAngle), pos.y - radius * sin(curAngle) };
-		curAngle += step;
+		float curAngle = angleStep *index;
+		return float2(pos.x + radius * cos(curAngle), pos.y - radius * sin(curAngle));
+	};
+	float2 start = getPos(pos, step, radius, 0);
+	for (int tri = 0; tri < m_sideCount - 2; tri++)
+	{
+		vertices[tri * 3]	  = start;
+		vertices[tri * 3 + 1] = getPos(pos, step, radius, vert);
+		vertices[tri * 3 + 2] = getPos(pos, step, radius, vert + 1);
+		vert++;
 	}
 	UnmapBuffer(mapParam);
 }

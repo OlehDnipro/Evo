@@ -547,9 +547,8 @@ enum TextureViewFlags :uint8
 };
 struct SView
 {
-	TextureType m_dimension;
-
-	TexViewUsage m_viewType;
+	ushort m_dimension;
+	ushort m_viewType;
 };
 
 
@@ -861,7 +860,7 @@ Device CreateDevice(DeviceParams& params)
 	ID3D12InfoQueue* myInfoQueue;
 	d3d_device->QueryInterface(IID_PPV_ARGS(&myInfoQueue));
 	ASSERT(myInfoQueue);
-	myInfoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_ERROR, true);
+	//myInfoQueue->SetBreakOnSeverity(D3D12_MESSAGE_SEVERITY_ERROR, true);
 #endif
 
 	D3D12_COMMAND_QUEUE_DESC queue_desc = {};
@@ -1055,12 +1054,13 @@ void DestroyDevice(Device& device)
 
 	device->m_pD3DQueue->Release();
 
-	delete device->m_RenderpassDictionary;
 	delete device->m_SamplerDictionary;
 	for (auto& pass : *device->m_RenderpassDictionary)
 	{
 		DestroyRenderPass(device, pass.second);
 	}
+	delete device->m_RenderpassDictionary;
+
 	if (device->m_pD3DDevice)
 	{
 		ULONG ref_count = device->m_pD3DDevice->Release();
@@ -2144,10 +2144,15 @@ Pipeline CreatePipeline(Device device, const SPipelineParams& params)
 	desc.DepthStencilState.DepthWriteMask = params.m_DepthWrite? D3D12_DEPTH_WRITE_MASK_ALL : D3D12_DEPTH_WRITE_MASK_ZERO;
 	desc.DepthStencilState.DepthFunc      = (D3D12_COMPARISON_FUNC) (params.m_DepthFunc + 1);
 
-	const uint32 rt_count = params.m_RenderPass->justDesc.m_ColorTargetCount;
-
-	desc.NumRenderTargets = rt_count;
-	memcpy(desc.RTVFormats, params.m_RenderPass->justDesc.m_ColorFormats, rt_count * sizeof(DXGI_FORMAT));
+	desc.NumRenderTargets = 0;
+	for (int i = 0; i < MAX_COLOR_TARGETS; i++)
+	{
+		if (params.m_RenderPass->justDesc.m_ColorFormats[i])
+		{
+			desc.RTVFormats[i] = g_Formats[params.m_RenderPass->justDesc.m_ColorFormats[i]];
+			desc.NumRenderTargets++;
+		}
+	}
 	desc.DSVFormat = g_Formats[params.m_RenderPass->justDesc.m_DepthFormat];
 
 	desc.SampleDesc.Count = params.m_RenderPass->justDesc.msaa_samples;
@@ -2649,14 +2654,12 @@ void BeginRenderPass(Context context, const char* name, bool clearColor, bool cl
 	Device device = context->m_Device;
 	SRenderPassDesc passDesc; memset(&passDesc, 0, sizeof(SRenderPassDesc));
 	passDesc.msaa_samples = 1;
-	passDesc.m_ColorTargetCount = 0;
 	int index = 0;
 	for (SResourceDesc& color_target : context->m_CurrentFrameBufferDesc.m_ColorTargets)
 	{
 		if (color_target.m_Resource)
 		{
 			passDesc.m_ColorFormats[index] = ((Texture)color_target.m_Resource)->m_Format;
-			passDesc.m_ColorTargetCount++;
 		}
 		index++;
 	}

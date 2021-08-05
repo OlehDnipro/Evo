@@ -11,7 +11,7 @@ public:
 	~CTexturedQuadGeometry();
 	void Draw(Context context, CShaderCache& cache, int resources_slot);
 	void DefineVertexFormat(vector<AttribDesc>& format);
-	PrimitiveType GetPrimType() { return PRIM_TRIANGLE_FAN; };
+	PrimitiveType GetPrimType() { return PRIM_TRIANGLESTRIP; };
 	void SetTexture(Texture tex, uint index = 0) { m_Texture = tex; m_TexDescIndex = index; };
 	void Create(Device device);
 	void Create(Device device, const QuadVertex (&vtx)[4]);
@@ -29,12 +29,12 @@ public:
 	CPolygonGeometry(int count) :m_sideCount(count) {};
 	void Draw(Context context, CShaderCache& cache, int resources_slot);
 	void DefineVertexFormat(vector<AttribDesc>& format);
-	PrimitiveType GetPrimType() { return PRIM_TRIANGLE_FAN; };
+	PrimitiveType GetPrimType() { return PRIM_TRIANGLES; };
 	void Create(Device device);
 	void UpdatePos(float radius, float2 pos);
 
 private:
-	Buffer m_VB;
+	Buffer m_VB, m_IB;
 	VertexSetup m_VertexSetup;
 	Device m_Device;
 	uint m_sideCount;

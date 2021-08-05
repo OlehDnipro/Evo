@@ -396,8 +396,6 @@ struct SRenderPassDesc
 	ImageFormat m_DepthFormat;
 	RenderPassFlags m_Flags;
 	uint8 msaa_samples;
-	uint m_ColorTargetCount;
-
 };
 struct SFrameBuffer
 {

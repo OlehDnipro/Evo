@@ -149,8 +149,9 @@ public:
 		m_Quad.Create(m_Device);
 		m_WaterQuad.Create(m_Device, { { {2, -0.25,  4},   {0, 0} },
 										{ { 5.5, -0.25,  4},   {1, 0} },
-										{ { 5.5, -0.25, -0.5},   {1, 1} },
-										{ {2, -0.25, -0.5},   {0, 1} }
+										{ {2, -0.25, -0.5},   {0, 1} },
+										{ { 5.5, -0.25, -0.5},   {1, 1} }
+										
 			});
 		m_Spheres.Create(m_Device);
 		m_PolyTask.SetGeometry(&m_Poly);
@@ -370,13 +371,11 @@ public:
 	void DrawFrame(Context context, uint buffer_index)
 	{
 		static bool SHReady = false;
-#ifndef GRAPHICS_API_D3D12
 		if (!SHReady)
 		{
 			m_ComputeSHTask.Execute(context, CComputeSHTask::Pass::ComputeTex);
 			SHReady = true;
 		}
-#endif
 		static uint frame = 0;
 		float depthFar[2] = { 1,0 };
 		float gray[4] = { 0.5, 0.5, 0.5, 0.5 };
@@ -394,7 +393,6 @@ public:
 		}
 
         Barrier(context, { { m_ShadowMap,  EResourceState::RS_SHADER_READ} });
-#ifndef GRAPHICS_API_D3D12
 
         SetDepthTarget(context, { (Texture)nullptr });
 		float delta = m_Timer.GetFrameTime();
@@ -437,7 +435,7 @@ public:
 
 			m_CurDropTex = 1 - m_CurDropTex;
 		}
-
+		
 		SetRenderTarget(context, m_Reflection, 0);
 		SetDepthTarget(context, m_DepthBuffer);
 		Barrier(context, { {m_Reflection , EResourceState::RS_RENDER_TARGET} });
@@ -446,7 +444,7 @@ public:
 		m_Shadows.Draw(context);
 		EndRenderPass(context);
 		Barrier(context, { { m_Reflection , EResourceState::RS_SHADER_READ} });
-#endif
+
 		Texture bb = GetBackBuffer(GetDevice(), buffer_index);
 		SetRenderTarget(context, bb, 0);
 		SetDepthTarget(context, m_DepthBuffer);
@@ -458,12 +456,12 @@ public:
 		m_Shadows.Draw(context);
 		m_PBR.Draw(context);
 		EndRenderPass(context);
-#ifndef GRAPHICS_API_D3D12
+		
 		BeginRenderPass(context, "Water", false, false);
 		m_WaterTask.Draw(context);
 		EndRenderPass(context);
-#endif
-        Barrier(context, { { bb , EResourceState::RS_PRESENT} });
+		
+		Barrier(context, { { bb , EResourceState::RS_PRESENT} });
 
 
 		frame++;
