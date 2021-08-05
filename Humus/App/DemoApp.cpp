@@ -99,7 +99,7 @@ bool DemoApp::Create()
 	m_Font.CreateResources(m_Device, "../../Textures/Fonts/Consolas.dds", m_BlendSrcAlpha);
 	m_Font.SetWindowSize(m_Device, m_DeviceParams.m_Width, m_DeviceParams.m_Height);
 
-	const SSamplerDesc sampler = { FILTER_LINEAR, 1, AM_CLAMP, AM_CLAMP, AM_CLAMP };
+	const SSamplerDesc sampler = { FILTER_LINEAR, 1, AM_CLAMP, AM_CLAMP, AM_CLAMP, ALWAYS };
 	if ((m_LinearClamp = CreateSamplerTable(m_Device, m_Primitives.GetRootSignature(), 2, &sampler, 1)) == nullptr) return false;
 
 	CheckBox::Init(m_Device, m_Primitives.GetRootSignature());

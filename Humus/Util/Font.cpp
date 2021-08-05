@@ -242,7 +242,7 @@ bool TexFont::CreateResources(Device device, const char *texture_file, const Ble
 	SResourceDesc resources[] = { m_Texture, m_ScaleCB };
 	if ((m_ResourceTable = CreateResourceTable(device, m_RootSig, NFont::Resources, resources)) == nullptr) return false;
 
-	const SSamplerDesc samplers[] = { FILTER_TRILINEAR, 1, AM_CLAMP, AM_CLAMP, AM_CLAMP };
+	const SSamplerDesc samplers[] = { FILTER_TRILINEAR, 1, AM_CLAMP, AM_CLAMP, AM_CLAMP, ALWAYS };
 	if ((m_SamplerTable = CreateSamplerTable(device, m_RootSig, NFont::Samplers, samplers)) == nullptr) return false;
 
 	return true;

@@ -1575,7 +1575,7 @@ SD3DViewDescriptor AcquireTextureSubresourceView(Device device, const SResourceD
 
 	STextureSubresource* sub = AcquireTextureSubresource(resourceDesc);
 	TextureType type = sub->m_Owner->m_Type;
-	if (resourceDesc.m_texRange.slice >= 0)
+	/*if (resourceDesc.m_texRange.slice >= 0)
 	{
 		bool arrayedType = type == TEX_1D_ARRAY || type == TEX_2D_ARRAY || type == TEX_CUBE_ARRAY;
 
@@ -1595,7 +1595,7 @@ SD3DViewDescriptor AcquireTextureSubresourceView(Device device, const SResourceD
 			}
 		}
 	}
-
+	*/
 	if (type == TEX_CUBE_ARRAY || type == TEX_CUBE)
 	{
 		if (resourceDesc.m_texRange.face >= 0)
@@ -1609,7 +1609,7 @@ SD3DViewDescriptor AcquireTextureSubresourceView(Device device, const SResourceD
 			}
 		}
 	}
-
+	
 
 	SDescriptorHeap* heap = nullptr;
 	switch (usageType)
@@ -1841,6 +1841,14 @@ void UpdateSamplerTable(Device device, RootSignature root, uint32 slot, SamplerT
 		D3D12_FILTER_MIN_MAG_MIP_LINEAR,
 	};
 
+	static const D3D12_FILTER filtersComp[] =
+	{
+		D3D12_FILTER_COMPARISON_MIN_MAG_MIP_POINT,
+		D3D12_FILTER_COMPARISON_MIN_MAG_LINEAR_MIP_POINT,
+		D3D12_FILTER_COMPARISON_MIN_MAG_MIP_POINT,
+		D3D12_FILTER_COMPARISON_MIN_MAG_LINEAR_MIP_POINT,
+		D3D12_FILTER_COMPARISON_MIN_MAG_MIP_LINEAR,
+	};
 
 	for (uint i = offset; i < offset + count; i++)
 	{
@@ -1849,21 +1857,21 @@ void UpdateSamplerTable(Device device, RootSignature root, uint32 slot, SamplerT
 		sizes[i] = 1;
 
 		const SSamplerDesc& sampler_desc = sampler_descs[i];
-
+		bool comparison = sampler_desc.Comparison != EComparisonFunc::ALWAYS;
 		D3D12_SAMPLER_DESC desc;
-		desc.Filter = (sampler_desc.Aniso > 1) ? D3D12_FILTER_ANISOTROPIC : filters[sampler_desc.Filter];
+		desc.Filter = (sampler_desc.Aniso > 1) ? D3D12_FILTER_ANISOTROPIC :( comparison? filtersComp[sampler_desc.Filter]:filters[sampler_desc.Filter]);
 		desc.AddressU = (sampler_desc.AddressModeU == AM_WRAP) ? D3D12_TEXTURE_ADDRESS_MODE_WRAP : D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
 		desc.AddressV = (sampler_desc.AddressModeV == AM_WRAP) ? D3D12_TEXTURE_ADDRESS_MODE_WRAP : D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
 		desc.AddressW = (sampler_desc.AddressModeW == AM_WRAP) ? D3D12_TEXTURE_ADDRESS_MODE_WRAP : D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
 		desc.MipLODBias = 0.0f;
 		desc.MaxAnisotropy = sampler_desc.Aniso;
-		desc.ComparisonFunc = D3D12_COMPARISON_FUNC_NEVER;
+		desc.ComparisonFunc = comparison ? ((D3D12_COMPARISON_FUNC)(sampler_desc.Comparison + 1) ):D3D12_COMPARISON_FUNC_NEVER ;
 		desc.BorderColor[0] = 0;
 		desc.BorderColor[1] = 0;
 		desc.BorderColor[2] = 0;
 		desc.BorderColor[3] = 0;
 		desc.MinLOD = 0.0f;
-		desc.MaxLOD = (sampler_desc.Filter > FILTER_LINEAR) ? -1 : 0.0f;
+		desc.MaxLOD = (sampler_desc.Filter > FILTER_LINEAR) ? FLT_MAX : 0.0f;
 		TSamplerDictionary::iterator itSampler = device->m_SamplerDictionary->find(sampler_desc);
 		if (itSampler == device->m_SamplerDictionary->end())
 		{

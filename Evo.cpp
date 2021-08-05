@@ -382,7 +382,6 @@ public:
 		float gray[4] = { 0.5, 0.5, 0.5, 0.5 };
 		float black[4] = { 0,0,0,0 };
 		float blue[4] = { 0.3,0.5,0.7, 1 };
-#ifndef GRAPHICS_API_D3D12
 		SetRenderTarget(context, { (Texture)nullptr }, 0);
         Barrier(context, { { m_ShadowMap,  EResourceState::RS_RENDER_TARGET} });
 		for (int i = 0; i < SHADOW_MAP_CASCADE_COUNT; i++)
@@ -395,6 +394,8 @@ public:
 		}
 
         Barrier(context, { { m_ShadowMap,  EResourceState::RS_SHADER_READ} });
+#ifndef GRAPHICS_API_D3D12
+
         SetDepthTarget(context, { (Texture)nullptr });
 		float delta = m_Timer.GetFrameTime();
 		if (m_CurDropTex == 1 && (m_dropTime == 0 || m_dropTime > WATERDROP_SPEED*100))
