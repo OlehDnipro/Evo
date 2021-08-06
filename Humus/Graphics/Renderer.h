@@ -84,6 +84,7 @@ enum TextureType
 	TEX_CUBE,
 	TEX_CUBE_ARRAY,
 	TEX_3D,
+	TEXT_TYPE_COUNT
 };
 
 enum EComparisonFunc : uint8

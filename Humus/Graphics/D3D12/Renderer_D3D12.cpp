@@ -206,7 +206,7 @@ struct SDevice
 	Context m_MainContext;
 
 	Texture m_BackBuffer[BUFFER_FRAMES];
-
+	Texture m_DefaultTextures[TEXT_TYPE_COUNT];
 	HWND m_Window;
 	uint32 m_FrameIndex;
 
@@ -1002,7 +1002,19 @@ Device CreateDevice(DeviceParams& params)
 	if (!CreateBackBufferSetups(device, params.m_Width, params.m_Height))
 		return false;
 
-
+	for (int i = 0; i < TextureType::TEXT_TYPE_COUNT; i++)
+	{
+		STextureParams params;
+		params.m_Type = (TextureType)i;
+		params.m_Width = params.m_Height = 4;
+		params.m_Depth = 1;
+		params.m_MipCount = 1;
+		params.m_Format = IMGFMT_R32F;
+		params.m_ShaderResource = true;
+		params.m_UnorderedAccess = true;
+		params.m_Slices = 1;
+		device->m_DefaultTextures[i] = CreateTexture(device, params);
+	}
 	device->m_DefaultBlendState = CreateBlendState(device, BF_ONE, BF_ZERO, BM_ADD, 0xF, false);
 
 
@@ -1060,6 +1072,9 @@ void DestroyDevice(Device& device)
 		DestroyRenderPass(device, pass.second);
 	}
 	delete device->m_RenderpassDictionary;
+	
+	for (int i = 0; i < TextureType::TEXT_TYPE_COUNT; i++)
+		DestroyTexture(device, device->m_DefaultTextures[i]);
 
 	if (device->m_pD3DDevice)
 	{
@@ -1319,6 +1334,7 @@ Context CreateContext(Device device, bool deferred)
 	memset(context, 0, sizeof(SContext));
 
 	context->m_Device = device;
+	context->m_CurrentRenderSetup = nullptr;
 
 	return context;
 }
@@ -1758,12 +1774,21 @@ void UpdateResourceTable(Device device, RootSignature root, uint32 slot, Resourc
 			ASSERT(resources[i].m_Type == RESTYPE_TEXTURE);
 			Texture texture = (Texture)resources[i].m_Resource;
 
+			bool replace =		texture == device->m_MainContext->m_CurrentFrameBufferDesc.m_ColorTargets[0].m_Resource
+							|| texture == device->m_MainContext->m_CurrentFrameBufferDesc.m_DepthTarget.m_Resource;
+				
+			if (replace && device->m_MainContext->m_CurrentRenderSetup)
+			{
+				texture = device->m_DefaultTextures[texture->m_Type];
+				Barrier(device->m_MainContext, { { {texture},item.m_Type == TEXTURE ? EResourceState::RS_SHADER_READ: EResourceState::RS_UNORDERED_ACCESS} });
+			}
+
 			TextureViewFlags viewFlags = ViewDefault;
 			if (reflectionFlags && (reflectionFlags[i] & Refl_Flag_Array) && !(reflectionFlags[i] & Refl_Flag_Cube)
 				&& (texture->m_Type == TEX_CUBE || texture->m_Type == TEX_CUBE_ARRAY))
 				viewFlags = CubeAsArray;
 
-			descriptor = AcquireTextureSubresourceView(device, resources[i], item.m_Type == TEXTURE ? TexViewUsage::SRV : TexViewUsage::UAV, viewFlags);
+			descriptor = AcquireTextureSubresourceView(device, replace ? SResourceDesc(texture) : resources[i], item.m_Type == TEXTURE ? TexViewUsage::SRV : TexViewUsage::UAV, viewFlags);
 			updates[i] = descriptor.handle;
 			break;
 		}
@@ -2750,7 +2775,7 @@ void EndRenderPass(Context context, const RenderSetup setup)
 		context->m_CmdList->m_pD3DList->ResourceBarrier(2, barriers);
 
 	}*/// todo
-
+	context->m_CurrentRenderSetup = nullptr;
 	EndMarker(context);
 }
 

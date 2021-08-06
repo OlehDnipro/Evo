@@ -643,7 +643,7 @@ int WINAPI WinMain(HINSTANCE hThisInst, HINSTANCE /*hLastInst*/, LPSTR /*lpszCmd
 //	flag |= _CRTDBG_DELAY_FREE_MEM_DF;
 	_CrtSetDbgFlag(flag); // Set flag to the new value
 #endif
-#ifdef GRAPHICS_API_D3D12
+#if defined(GRAPHICS_API_D3D12)  && defined(RENDERDOC)
 	HMODULE handle = LoadLibraryA("renderdoc.dll"); // renderdoc must be loaded before DX dlls
 #endif
 //	initCPU();
