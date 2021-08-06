@@ -1615,7 +1615,7 @@ SD3DViewDescriptor AcquireTextureSubresourceView(Device device, const SResourceD
 	if (type == TEX_CUBE_ARRAY || type == TEX_CUBE)
 	{
 		if (resourceDesc.m_texRange.face >= 0)
-			type = TEX_2D;
+			type = TEX_2D_ARRAY;
 		else
 		{
 
