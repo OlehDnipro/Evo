@@ -1,23 +1,18 @@
-
-/* * * * * * * * * * * * * Author's note * * * * * * * * * * * *\
-*   _       _   _       _   _       _   _       _     _ _ _ _   *
-*  |_|     |_| |_|     |_| |_|_   _|_| |_|     |_|  _|_|_|_|_|  *
-*  |_|_ _ _|_| |_|     |_| |_|_|_|_|_| |_|     |_| |_|_ _ _     *
-*  |_|_|_|_|_| |_|     |_| |_| |_| |_| |_|     |_|   |_|_|_|_   *
-*  |_|     |_| |_|_ _ _|_| |_|     |_| |_|_ _ _|_|  _ _ _ _|_|  *
-*  |_|     |_|   |_|_|_|   |_|     |_|   |_|_|_|   |_|_|_|_|    *
-*                                                               *
-*                     http://www.humus.name                     *
-*                                                                *
-* This file is a part of the work done by Humus. You are free to   *
-* use the code in any way you like, modified, unmodified or copied   *
-* into your own work. However, I expect you to respect these points:  *
-*  - If you use this file and its contents unmodified, or use a major *
-*    part of this file, please credit the author and leave this note. *
-*  - For use in anything commercial, please request my approval.     *
-*  - Share your work and ideas too as much as you can.             *
-*                                                                *
-\* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *\ 
+*Copyright 2021 Oleh Sopilniak																																	*
+*																																								*
+* Permission is hereby granted, free of charge, to any person obtaining a copy of this software																	*
+* and associated documentation files (the "Software"), to deal in the Software without restriction,																*
+* including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense,															*
+* and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so,															*
+*  subject to the following conditions:																															*
+*																																								*
+* The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.								*	
+*																																								*
+* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,			*
+* FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, *
+* WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.    *
+* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *  */
 
 #include "Humus/App/DemoApp.h"
 
@@ -676,59 +671,6 @@ int WINAPI WinMain(HINSTANCE hThisInst, HINSTANCE /*hLastInst*/, LPSTR /*lpszCmd
 	ATOM win_class = RegisterClassEx(&wc);
 	if (!win_class) return 0;
 
-	//app->setInstance(hThisInst);
-
-#if 0
-	//JOYINFO joyInfo;
-	//bool useJoystick = (joyGetPos(JOYSTICKID1, &joyInfo) == JOYERR_NOERROR);
-	JOYCAPS joyCaps;
-	DWORD joyFlags = 0;
-	float xScale = 0, xBias = 0;
-	float yScale = 0, yBias = 0;
-	float zScale = 0, zBias = 0;
-	float rScale = 0, rBias = 0;
-	float uScale = 0, uBias = 0;
-	float vScale = 0, vBias = 0;
-	if (joyGetDevCaps(JOYSTICKID1, &joyCaps, sizeof(joyCaps)) == JOYERR_NOERROR)
-	{
-		joyFlags = JOY_RETURNX | JOY_RETURNY | JOY_RETURNBUTTONS;
-		xScale = 2.0f / float(int(joyCaps.wXmax) - int(joyCaps.wXmin));
-		xBias  = 1.0f - joyCaps.wXmax * xScale;
-		yScale = 2.0f / float(int(joyCaps.wYmax) - int(joyCaps.wYmin));
-		yBias  = 1.0f - joyCaps.wYmax * yScale;
-
-		if (joyCaps.wCaps & JOYCAPS_HASZ)
-		{
-			joyFlags |= JOY_RETURNZ;
-			zScale = 2.0f / float(int(joyCaps.wZmax) - int(joyCaps.wZmin));
-			zBias  = 1.0f - joyCaps.wZmax * zScale;
-		}
-		if (joyCaps.wCaps & JOYCAPS_HASR)
-		{
-			joyFlags |= JOY_RETURNR;
-			rScale = 2.0f / float(int(joyCaps.wRmax) - int(joyCaps.wRmin));
-			rBias  = 1.0f - joyCaps.wRmax * rScale;
-		}
-		if (joyCaps.wCaps & JOYCAPS_HASU)
-		{
-			joyFlags |= JOY_RETURNU;
-			uScale = 2.0f / float(int(joyCaps.wUmax) - int(joyCaps.wUmin));
-			uBias  = 1.0f - joyCaps.wUmax * uScale;
-		}
-		if (joyCaps.wCaps & JOYCAPS_HASV)
-		{
-			joyFlags |= JOY_RETURNV;
-			vScale = 2.0f / float(int(joyCaps.wVmax) - int(joyCaps.wVmin));
-			vBias  = 1.0f - joyCaps.wVmax * vScale;
-		}
-	}
-#endif
-
-	// Initialize timer
-	//app->initTime();
-
-	//app->loadConfig();
-	//app->initGUI();
 
 	/*
 		Force the main thread to always run on CPU 0.
@@ -749,24 +691,11 @@ int WINAPI WinMain(HINSTANCE hThisInst, HINSTANCE /*hLastInst*/, LPSTR /*lpszCmd
 		{
 			app->Start();
 
-			//app->resetCamera();
-
-	/*			
-			app->loadConfig();
-
-			if (!app->initCaps()) break;
-			if (!app->initAPI()) break;
-
-			if (!app->load())
-			{
-				app->closeWindow(true, false);
-			}*/
 
 			bool quit = false;
 			for (;;)
 			{
 
-				//InvalidateRect(app->GetRenderer()->GetWindow(), nullptr, FALSE);
 
 				while (PeekMessage(&msg, nullptr, 0, 0, PM_REMOVE))
 				{
@@ -775,7 +704,6 @@ int WINAPI WinMain(HINSTANCE hThisInst, HINSTANCE /*hLastInst*/, LPSTR /*lpszCmd
 						quit = true;
 					}
 
-					//TranslateMessage(&msg);
 					DispatchMessage(&msg);
 				}
 
@@ -784,70 +712,6 @@ int WINAPI WinMain(HINSTANCE hThisInst, HINSTANCE /*hLastInst*/, LPSTR /*lpszCmd
 
 				if (g_Active)
 				{
-					/*
-						Joystick support
-					*/
-#if 0
-					if (joyFlags)
-					{
-						static DWORD lastButtons = 0;
-						static DWORD lastXpos = 0, lastYpos = 0, lastZpos = 0;
-						static DWORD lastRpos = 0, lastUpos = 0, lastVpos = 0;
-
-						JOYINFOEX joyInfo;
-						joyInfo.dwSize = sizeof(joyInfo);
-						joyInfo.dwFlags = joyFlags;
-
-						if (joyGetPosEx(JOYSTICKID1, &joyInfo) == JOYERR_NOERROR)
-						{
-							DWORD changed = lastButtons ^ joyInfo.dwButtons;
-							if (changed)
-							{
-								for (uint i = 0; i < joyCaps.wNumButtons; i++)
-								{
-									// Only call App for buttons that changed
-									if (changed & 1)
-									{
-										app->onJoystickButton(i, ((joyInfo.dwButtons >> i) & 1) != 0);
-									}
-									changed >>= 1;
-								}
-
-								lastButtons = joyInfo.dwButtons;
-							}
-							if ((joyInfo.dwFlags & JOY_RETURNX) && joyInfo.dwXpos != lastXpos)
-							{
-								app->onJoystickAxis(0, joyInfo.dwXpos * xScale + xBias);
-								lastXpos = joyInfo.dwXpos;
-							}
-							if ((joyInfo.dwFlags & JOY_RETURNY) && joyInfo.dwYpos != lastYpos)
-							{
-								app->onJoystickAxis(1, joyInfo.dwYpos * yScale + yBias);
-								lastYpos = joyInfo.dwYpos;
-							}
-							if ((joyInfo.dwFlags & JOY_RETURNZ) && joyInfo.dwZpos != lastZpos)
-							{
-								app->onJoystickAxis(2, joyInfo.dwZpos * zScale + zBias);
-								lastZpos = joyInfo.dwZpos;
-							}
-							if ((joyInfo.dwFlags & JOY_RETURNR) && joyInfo.dwRpos != lastRpos)
-							{
-								app->onJoystickAxis(3, joyInfo.dwRpos * rScale + rBias);
-								lastRpos = joyInfo.dwRpos;
-							}
-							if ((joyInfo.dwFlags & JOY_RETURNU) && joyInfo.dwUpos != lastUpos)
-							{
-								app->onJoystickAxis(4, joyInfo.dwUpos * uScale + uBias);
-								lastUpos = joyInfo.dwUpos;
-							}
-							if ((joyInfo.dwFlags & JOY_RETURNV) && joyInfo.dwVpos != lastVpos)
-							{
-								app->onJoystickAxis(5, joyInfo.dwVpos * vScale + vBias);
-								lastVpos = joyInfo.dwVpos;
-							}
-						}
-					}
-#endif
 
 					app->MakeFrame();
 				}
