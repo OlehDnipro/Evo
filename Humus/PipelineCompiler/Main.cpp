@@ -1413,13 +1413,13 @@ void PrepareShaders(const std::vector<SShaderSource>& shaders)
 }
 
 template<class T>
-bool ProcessFolder(const char* _root,  T& fileFunctor)
+bool ProcessFolder(const char* _root,  T& fileFunctor, bool force)
 {
 	std::string root(_root);
 
 	std::map<std::string, size_t> hashes; 
 	FILE* fhashes = fopen((root + "hashtable.dat").c_str(), "rt");
-	if (fhashes)
+	if (fhashes && !force)
 	{
 		while (!feof(fhashes))
 		{
@@ -1445,7 +1445,7 @@ bool ProcessFolder(const char* _root,  T& fileFunctor)
 			{
 				if (name[0] != '.')
 				{
-					has_errors |= ProcessFolder((root + name + "\\").c_str(), fileFunctor);
+					has_errors |= ProcessFolder((root + name + "\\").c_str(), fileFunctor, force);
 				}
 			}
 			else
@@ -1489,7 +1489,7 @@ int main(int argc, char **argv)
 	bool fxc = false;
 	bool dxc = true;
 	bool glslang = false;
-
+	bool forceCompile = false;
 	for (int i = 1; i < argc; i++)
 	{
 		if (strcmp(argv[i], "dxc") == 0)
@@ -1507,11 +1507,15 @@ int main(int argc, char **argv)
 			api = Vulkan;
 		else if (strcmp(argv[i], "dx12") == 0)
 			api = D3D12;
+		else if (strcmp(argv[i], "force") == 0)
+			forceCompile = true;
 		else
 		{
 			printf("Error: Unknown option \"%s\"\n", argv[i]);
 			return UNKNOWN_OPTION;
 		}
+
+
 	}
 
 	char sdk_path[MAX_PATH];
@@ -1659,10 +1663,16 @@ int main(int argc, char **argv)
 		char* ext = strchr(name, '.');
 		if (ext)
 			*ext = '\0';
-
+		const char* apiStr = api == Vulkan ? "vulkan\\" : "d3d12\\";
 		char out_filename_cpp[MAX_PATH];
-		sprintf_s(out_filename_cpp, "%s.h", full_filename);
-
+		char* apiPathPart = path + strlen(path);
+		strcpy(apiPathPart, apiStr);
+		DWORD attribs = ::GetFileAttributesA(path);
+		if (attribs == INVALID_FILE_ATTRIBUTES)
+			CreateDirectoryA(path, 0);
+			
+		sprintf_s(out_filename_cpp, "%s%s.pipeline.h", path, name);
+		apiPathPart[0] = 0;
 		file = fopen(out_filename_cpp, "wb");
 		if (file == nullptr)
 			return ACCESS_DENIED;
@@ -1764,7 +1774,7 @@ int main(int argc, char **argv)
 	GetModuleFileName(NULL, path, 512);
 	std::string _path(path);
 	_path = _path.substr(0, _path.rfind('\\') +1);
-	if (ProcessFolder(_path.c_str(), processFile))
+	if (ProcessFolder(_path.c_str(), processFile, forceCompile))
 	{
 		getchar();
 	}

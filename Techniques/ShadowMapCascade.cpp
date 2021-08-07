@@ -1,8 +1,11 @@
 
 
 #include "ShadowMapCascade.h"
-#include "Shaders\Tech\ShadowMapCascade.pipeline.h"
-
+#if GRAPHICS_API_VULKAN
+#include "Shaders\Tech\vulkan\ShadowMapCascade.pipeline.h"
+#else
+#include "Shaders\Tech\d3d12\ShadowMapCascade.pipeline.h"
+#endif
 CParameterProviderLayout CParameterProviderBase<CShadowParameterProvider>::m_Layout = CParameterProviderLayout(&CShadowParameterProvider::CreateParameterMap);
 CParameterProviderLayout CParameterProviderBase<CReflectProvider>::m_Layout = CParameterProviderLayout(&CReflectProvider::CreateParameterMap);
 

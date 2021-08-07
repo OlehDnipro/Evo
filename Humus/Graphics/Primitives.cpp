@@ -20,7 +20,11 @@
 \* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 
 #include "Primitives.h"
-#include "Shaders\Humus\Graphics\Primitives.pipeline.h"
+#if GRAPHICS_API_VULKAN
+#include "Shaders\Humus\Graphics\vulkan\Primitives.pipeline.h"
+#else
+#include "Shaders\Humus\Graphics\d3d12\Primitives.pipeline.h"
+#endif
 
 const uint VB_SIZE = 16*1024;
 

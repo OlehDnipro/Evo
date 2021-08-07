@@ -1,7 +1,14 @@
 #include "QuadTasks.h"
-#include "Shaders\Tech\Water.pipeline.h"
-#include "Shaders\Tech\Waterdrop.pipeline.h"
-#include "Shaders\Tech\Polygon.pipeline.h"
+#if GRAPHICS_API_VULKAN
+#include "Shaders\Tech\vulkan\Water.pipeline.h"
+#include "Shaders\Tech\vulkan\Waterdrop.pipeline.h"
+#include "Shaders\Tech\vulkan\Polygon.pipeline.h"
+#else
+#include "Shaders\Tech\d3d12\Water.pipeline.h"
+#include "Shaders\Tech\d3d12\Waterdrop.pipeline.h"
+#include "Shaders\Tech\d3d12\Polygon.pipeline.h"
+#endif
+
 
 CParameterProviderLayout CParameterProviderBase<CWaterParameterProvider>::m_Layout = CParameterProviderLayout(&CWaterParameterProvider::CreateParameterMap);
 

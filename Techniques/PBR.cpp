@@ -1,5 +1,9 @@
 #include "PBR.h"
-#include "Shaders\Tech\PBR.pipeline.h"
+#if GRAPHICS_API_VULKAN
+#include "Shaders\Tech\vulkan\PBR.pipeline.h"
+#else
+#include "Shaders\Tech\d3d12\PBR.pipeline.h"
+#endif
 CParameterProviderLayout CParameterProviderBase<CPBRModelParameterProvider>::m_Layout = CParameterProviderLayout(&CPBRModelParameterProvider::CreateParameterMap);
 
 void GenerateSphereMesh(SphereVertex*& vertices, uint16*& indices, uint& out_vertCount, uint& out_indCount, uint in_divisor)

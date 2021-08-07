@@ -1,5 +1,9 @@
 #include "SH.h"
-#include "Shaders\Tech\SH.pipeline.h"
+#if GRAPHICS_API_VULKAN
+#include "Shaders\Tech\vulkan\SH.pipeline.h"
+#else
+#include "Shaders\Tech\d3d12\SH.pipeline.h"
+#endif
 CParameterProviderLayout CParameterProviderBase<CSHParameterProvider>::m_Layout = CParameterProviderLayout(&CSHParameterProvider::CreateParameterMap);
 
 const char* GetResourceNameSH(uint slot, uint binding)

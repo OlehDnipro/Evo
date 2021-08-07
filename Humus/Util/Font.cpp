@@ -20,7 +20,11 @@
 \* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 
 #include "Font.h"
-#include "Shaders\Humus\Util\Font.pipeline.h"
+#if GRAPHICS_API_VULKAN
+#include "Shaders\Humus\Util\vulkan\Font.pipeline.h"
+#else
+#include "Shaders\Humus\Util\d3d12\Font.pipeline.h"
+#endif
 
 #include <stdio.h>
 #include <string.h>

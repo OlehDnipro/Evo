@@ -47,6 +47,24 @@ const char* RootItemNames[3][2] =
 
 };
 
+const char* RootItemTypes[3][2] =
+{
+
+	{
+		"float4",
+		"SConstants"
+	},
+
+	{
+		"Texture2D"
+	},
+
+	{
+		"SamplerState"
+	},
+
+};
+
 static const char RootSig[] =
 	"\3\0\0\0\7\0\0\0\2\0\0\0\7\0\0\0\1\0\0\0\10\0\0\0\1\0\0\0\5\0\0\0\1\0\0\0\5\0\0\0\1\0\0\0\1\0\0\0\1\0\0\0\6\0\0\0\1\0\0\0";
 
