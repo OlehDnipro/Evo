@@ -32,9 +32,11 @@
 
 #include <vector>
 //#define USE_PIX
-
+#ifdef RENDERDOC
+#define USE_PIX
+#endif
 #ifdef USE_PIX
-#include "pix3.h"
+#include "pix.h"
 #endif
 
 #pragma comment (lib, "dxgi.lib")
@@ -1038,8 +1040,6 @@ void DestroyDevice(Device& device)
 	DestroyBlendState(device, device->m_DefaultBlendState);
 
 	DestroyBackBufferSetups(device);
-
-	DestroyRenderPass(device, device->m_BackBufferRenderPass);
 
 	DestroyContext(device, device->m_MainContext);
 
@@ -2401,7 +2401,7 @@ uint GetBufferSize(Buffer buffer)
 void BeginMarker(Context context, const char* name)
 {
 #ifdef USE_PIX
-	PIXBeginEvent(context->m_CmdList, 0, name);
+	PIXBeginEvent(context->m_CmdList->m_pD3DList, 0, name);
 #endif
 
 	if (context->m_IsProfiling)
@@ -2426,7 +2426,7 @@ void EndMarker(Context context)
 	}
 
 #ifdef USE_PIX
-	PIXEndEvent(context->m_CmdList);
+	PIXEndEvent(context->m_CmdList->m_pD3DList);
 #endif
 }
 
