@@ -1483,7 +1483,7 @@ STextureSubresource* AcquireTextureSubresource(const SResourceDesc& resourceDesc
 	}
 
 	ASSERT(desc.slice >= 0 || desc.mip == -1);
-	uint index = (desc.slice + 1) + (desc.mip >= 0) * (texture->m_MipLevels * desc.slice + desc.mip);
+	uint index = desc.mip == -1 ? desc.slice + 1 : texture->m_Slices + 1 + (texture->m_MipLevels * desc.slice + desc.mip);
 
 	bool isCube = texture->m_Type == TEX_CUBE || texture->m_Type == TEX_CUBE_ARRAY;
 
@@ -1814,8 +1814,9 @@ void UpdateResourceTable(Device device, RootSignature root, uint32 slot, Resourc
 			element = 0;
 		}
 	}
+	
 	// todo: optimize
-	device->m_pD3DDevice->CopyDescriptors(count, &destination[0], &sizes[0], count, &updates[0], &sizes[0], D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+	device->m_pD3DDevice->CopyDescriptors(1, &destination[0], &count, count, &updates[0], &sizes[0], D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 
 }
 ResourceTable CreateResourceTable(Device device, RootSignature root, uint32 slot, const SResourceDesc* resources, uint count, Context onframe)
@@ -1909,7 +1910,7 @@ void UpdateSamplerTable(Device device, RootSignature root, uint32 slot, SamplerT
 		}
 		updates[i] = itSampler->second;
 	}
-	device->m_pD3DDevice->CopyDescriptors(count, &destination[0], &sizes[0], count, &updates[0], &sizes[0], D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER);
+	device->m_pD3DDevice->CopyDescriptors(1, &destination[0], &count, count, &updates[0], &sizes[0], D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER);
 
 
 }

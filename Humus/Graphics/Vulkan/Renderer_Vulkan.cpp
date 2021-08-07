@@ -298,7 +298,7 @@ STextureSubresource* AcquireTextureSubresource(const SResourceDesc& resourceDesc
 	}
 	
 	assert(desc.slice >= 0 || desc.mip == -1);
-	uint index = (desc.slice + 1) + (desc.mip >= 0) *(texture->m_MipLevels*desc.slice + desc.mip);
+	uint index = desc.mip ==  -1 ? desc.slice + 1 : texture->m_Slices + 1 + (texture->m_MipLevels*desc.slice + desc.mip);
 
 	bool isCube = texture->m_Type == TEX_CUBE || texture->m_Type == TEX_CUBE_ARRAY;
 
