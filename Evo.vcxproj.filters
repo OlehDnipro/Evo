@@ -1,0 +1,402 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="Source Files">
+      <UniqueIdentifier>{4FC737F1-C7A5-4376-A066-2A32D752A2FF}</UniqueIdentifier>
+      <Extensions>cpp;c;cc;cxx;def;odl;idl;hpj;bat;asm;asmx</Extensions>
+    </Filter>
+    <Filter Include="Resource Files">
+      <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
+      <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
+    </Filter>
+    <Filter Include="Source Files\Humus">
+      <UniqueIdentifier>{859ad370-d222-4116-ac14-efbc591f625b}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\Humus\App">
+      <UniqueIdentifier>{9c1cd208-6670-487b-8496-3906c17994a8}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\Humus\Graphics">
+      <UniqueIdentifier>{e21d0474-39d4-43d2-8e4e-05595ec8c448}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\Humus\Graphics\D3D12">
+      <UniqueIdentifier>{66f597f5-9035-4a74-b044-9ff059f96da5}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\Humus\Graphics\Vulkan">
+      <UniqueIdentifier>{a954c616-edf9-4452-95a6-aeca05eb15f8}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\Humus\GUI">
+      <UniqueIdentifier>{129a643e-8bee-4976-ba0f-b63fb1337d46}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\Humus\Math">
+      <UniqueIdentifier>{c90aa94e-cec8-4e36-a032-542f15647ae9}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\Humus\Util">
+      <UniqueIdentifier>{bcf9d677-ec43-4d1b-a118-254a2c821144}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\Humus\Debug">
+      <UniqueIdentifier>{e3574864-018a-45ec-85b3-a1d6a6206719}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\Techniques">
+      <UniqueIdentifier>{4417a71b-6e7c-4593-a65e-e3ebc655ccd5}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\assimp">
+      <UniqueIdentifier>{83b46878-f931-4a02-9a30-dc9e160e30e6}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="Evo.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="Humus\App\DemoApp.cpp">
+      <Filter>Source Files\Humus\App</Filter>
+    </ClCompile>
+    <ClCompile Include="Humus\Graphics\Primitives.cpp">
+      <Filter>Source Files\Humus\Graphics</Filter>
+    </ClCompile>
+    <ClCompile Include="Humus\Graphics\Renderer.cpp">
+      <Filter>Source Files\Humus\Graphics</Filter>
+    </ClCompile>
+    <ClCompile Include="Humus\Graphics\D3D12\Renderer_D3D12.cpp">
+      <Filter>Source Files\Humus\Graphics\D3D12</Filter>
+    </ClCompile>
+    <ClCompile Include="Humus\Graphics\Vulkan\Renderer_Vulkan.cpp">
+      <Filter>Source Files\Humus\Graphics\Vulkan</Filter>
+    </ClCompile>
+    <ClCompile Include="Humus\GUI\Button.cpp">
+      <Filter>Source Files\Humus\GUI</Filter>
+    </ClCompile>
+    <ClCompile Include="Humus\GUI\CheckBox.cpp">
+      <Filter>Source Files\Humus\GUI</Filter>
+    </ClCompile>
+    <ClCompile Include="Humus\GUI\Dialog.cpp">
+      <Filter>Source Files\Humus\GUI</Filter>
+    </ClCompile>
+    <ClCompile Include="Humus\GUI\DropDownList.cpp">
+      <Filter>Source Files\Humus\GUI</Filter>
+    </ClCompile>
+    <ClCompile Include="Humus\GUI\Label.cpp">
+      <Filter>Source Files\Humus\GUI</Filter>
+    </ClCompile>
+    <ClCompile Include="Humus\GUI\Slider.cpp">
+      <Filter>Source Files\Humus\GUI</Filter>
+    </ClCompile>
+    <ClCompile Include="Humus\GUI\Widget.cpp">
+      <Filter>Source Files\Humus\GUI</Filter>
+    </ClCompile>
+    <ClCompile Include="Humus\Math\Vector.cpp">
+      <Filter>Source Files\Humus\Math</Filter>
+    </ClCompile>
+    <ClCompile Include="Humus\Math\Half.cpp">
+      <Filter>Source Files\Humus\Math</Filter>
+    </ClCompile>
+    <ClCompile Include="Humus\Debug\InitCheck.cpp">
+      <Filter>Source Files\Humus\Debug</Filter>
+    </ClCompile>
+    <ClCompile Include="Humus\Util\Image.cpp">
+      <Filter>Source Files\Humus\Util</Filter>
+    </ClCompile>
+    <ClCompile Include="Humus\Util\ImageTools.cpp">
+      <Filter>Source Files\Humus\Util</Filter>
+    </ClCompile>
+    <ClCompile Include="Humus\Util\Model.cpp">
+      <Filter>Source Files\Humus\Util</Filter>
+    </ClCompile>
+    <ClCompile Include="Humus\Util\Timer.cpp">
+      <Filter>Source Files\Humus\Util</Filter>
+    </ClCompile>
+    <ClCompile Include="Humus\Util\Tokenizer.cpp">
+      <Filter>Source Files\Humus\Util</Filter>
+    </ClCompile>
+    <ClCompile Include="Humus\Util\Font.cpp">
+      <Filter>Source Files\Humus\Util</Filter>
+    </ClCompile>
+    <ClCompile Include="Humus\Config.cpp">
+      <Filter>Source Files\Humus</Filter>
+    </ClCompile>
+    <ClCompile Include="Humus\Platform.cpp">
+      <Filter>Source Files\Humus</Filter>
+    </ClCompile>
+    <ClCompile Include="Humus\SIMD.cpp">
+      <Filter>Source Files\Humus</Filter>
+    </ClCompile>
+    <ClCompile Include="Techniques\ShadowMapCascade.cpp">
+      <Filter>Source Files\Techniques</Filter>
+    </ClCompile>
+    <ClCompile Include="ParameterProviderRegistry.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="Techniques\RenderTask.cpp">
+      <Filter>Source Files\Techniques</Filter>
+    </ClCompile>
+    <ClCompile Include="Techniques\QuadTasks.cpp">
+      <Filter>Source Files\Techniques</Filter>
+    </ClCompile>
+    <ClCompile Include="Techniques\PBR.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="Techniques\SH.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="Techniques\IntegrateEnv.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="Humus\App\DemoApp.h">
+      <Filter>Source Files\Humus\App</Filter>
+    </ClInclude>
+    <ClInclude Include="Humus\Graphics\Primitives.h">
+      <Filter>Source Files\Humus\Graphics</Filter>
+    </ClInclude>
+    <ClInclude Include="Humus\Graphics\Primitives.pipeline.h">
+      <Filter>Source Files\Humus\Graphics</Filter>
+    </ClInclude>
+    <ClInclude Include="Humus\Graphics\Renderer.h">
+      <Filter>Source Files\Humus\Graphics</Filter>
+    </ClInclude>
+    <ClInclude Include="Humus\GUI\Button.h">
+      <Filter>Source Files\Humus\GUI</Filter>
+    </ClInclude>
+    <ClInclude Include="Humus\GUI\CheckBox.h">
+      <Filter>Source Files\Humus\GUI</Filter>
+    </ClInclude>
+    <ClInclude Include="Humus\GUI\Dialog.h">
+      <Filter>Source Files\Humus\GUI</Filter>
+    </ClInclude>
+    <ClInclude Include="Humus\GUI\DropDownList.h">
+      <Filter>Source Files\Humus\GUI</Filter>
+    </ClInclude>
+    <ClInclude Include="Humus\GUI\Label.h">
+      <Filter>Source Files\Humus\GUI</Filter>
+    </ClInclude>
+    <ClInclude Include="Humus\GUI\Slider.h">
+      <Filter>Source Files\Humus\GUI</Filter>
+    </ClInclude>
+    <ClInclude Include="Humus\GUI\Widget.h">
+      <Filter>Source Files\Humus\GUI</Filter>
+    </ClInclude>
+    <ClInclude Include="Humus\Math\Half.h">
+      <Filter>Source Files\Humus\Math</Filter>
+    </ClInclude>
+    <ClInclude Include="Humus\Math\Vector.h">
+      <Filter>Source Files\Humus\Math</Filter>
+    </ClInclude>
+    <ClInclude Include="Humus\Debug\InitCheck.h">
+      <Filter>Source Files\Humus\Debug</Filter>
+    </ClInclude>
+    <ClInclude Include="Humus\Util\IDAllocator.h">
+      <Filter>Source Files\Humus\Util</Filter>
+    </ClInclude>
+    <ClInclude Include="Humus\Util\Image.h">
+      <Filter>Source Files\Humus\Util</Filter>
+    </ClInclude>
+    <ClInclude Include="Humus\Util\ImageTools.h">
+      <Filter>Source Files\Humus\Util</Filter>
+    </ClInclude>
+    <ClInclude Include="Humus\Util\KdTree.h">
+      <Filter>Source Files\Humus\Util</Filter>
+    </ClInclude>
+    <ClInclude Include="Humus\Util\Model.h">
+      <Filter>Source Files\Humus\Util</Filter>
+    </ClInclude>
+    <ClInclude Include="Humus\Util\Queue.h">
+      <Filter>Source Files\Humus\Util</Filter>
+    </ClInclude>
+    <ClInclude Include="Humus\Util\stb_image.h">
+      <Filter>Source Files\Humus\Util</Filter>
+    </ClInclude>
+    <ClInclude Include="Humus\Util\StringHash.h">
+      <Filter>Source Files\Humus\Util</Filter>
+    </ClInclude>
+    <ClInclude Include="Humus\Util\Timer.h">
+      <Filter>Source Files\Humus\Util</Filter>
+    </ClInclude>
+    <ClInclude Include="Humus\Util\Tokenizer.h">
+      <Filter>Source Files\Humus\Util</Filter>
+    </ClInclude>
+    <ClInclude Include="Humus\Util\Array.h">
+      <Filter>Source Files\Humus\Util</Filter>
+    </ClInclude>
+    <ClInclude Include="Humus\Util\Font.h">
+      <Filter>Source Files\Humus\Util</Filter>
+    </ClInclude>
+    <ClInclude Include="Humus\Util\Font.pipeline.h">
+      <Filter>Source Files\Humus\Util</Filter>
+    </ClInclude>
+    <ClInclude Include="Humus\Util\Hash.h">
+      <Filter>Source Files\Humus\Util</Filter>
+    </ClInclude>
+    <ClInclude Include="Humus\Config.h">
+      <Filter>Source Files\Humus</Filter>
+    </ClInclude>
+    <ClInclude Include="Humus\Platform.h">
+      <Filter>Source Files\Humus</Filter>
+    </ClInclude>
+    <ClInclude Include="Humus\SIMD.h">
+      <Filter>Source Files\Humus</Filter>
+    </ClInclude>
+    <ClInclude Include="Model.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Techniques\ShadowMapCascade.h">
+      <Filter>Source Files\Techniques</Filter>
+    </ClInclude>
+    <ClInclude Include="assimp\ai_assert.h">
+      <Filter>Source Files\assimp</Filter>
+    </ClInclude>
+    <ClInclude Include="assimp\anim.h">
+      <Filter>Source Files\assimp</Filter>
+    </ClInclude>
+    <ClInclude Include="assimp\camera.h">
+      <Filter>Source Files\assimp</Filter>
+    </ClInclude>
+    <ClInclude Include="assimp\cexport.h">
+      <Filter>Source Files\assimp</Filter>
+    </ClInclude>
+    <ClInclude Include="assimp\cfileio.h">
+      <Filter>Source Files\assimp</Filter>
+    </ClInclude>
+    <ClInclude Include="assimp\cimport.h">
+      <Filter>Source Files\assimp</Filter>
+    </ClInclude>
+    <ClInclude Include="assimp\color4.h">
+      <Filter>Source Files\assimp</Filter>
+    </ClInclude>
+    <ClInclude Include="assimp\Compiler\poppack1.h">
+      <Filter>Source Files\assimp</Filter>
+    </ClInclude>
+    <ClInclude Include="assimp\Compiler\pstdint.h">
+      <Filter>Source Files\assimp</Filter>
+    </ClInclude>
+    <ClInclude Include="assimp\Compiler\pushpack1.h">
+      <Filter>Source Files\assimp</Filter>
+    </ClInclude>
+    <ClInclude Include="assimp\config.h">
+      <Filter>Source Files\assimp</Filter>
+    </ClInclude>
+    <ClInclude Include="assimp\DefaultLogger.hpp">
+      <Filter>Source Files\assimp</Filter>
+    </ClInclude>
+    <ClInclude Include="assimp\defs.h">
+      <Filter>Source Files\assimp</Filter>
+    </ClInclude>
+    <ClInclude Include="assimp\Exporter.hpp">
+      <Filter>Source Files\assimp</Filter>
+    </ClInclude>
+    <ClInclude Include="assimp\Importer.hpp">
+      <Filter>Source Files\assimp</Filter>
+    </ClInclude>
+    <ClInclude Include="assimp\importerdesc.h">
+      <Filter>Source Files\assimp</Filter>
+    </ClInclude>
+    <ClInclude Include="assimp\IOStream.hpp">
+      <Filter>Source Files\assimp</Filter>
+    </ClInclude>
+    <ClInclude Include="assimp\IOSystem.hpp">
+      <Filter>Source Files\assimp</Filter>
+    </ClInclude>
+    <ClInclude Include="assimp\light.h">
+      <Filter>Source Files\assimp</Filter>
+    </ClInclude>
+    <ClInclude Include="assimp\Logger.hpp">
+      <Filter>Source Files\assimp</Filter>
+    </ClInclude>
+    <ClInclude Include="assimp\LogStream.hpp">
+      <Filter>Source Files\assimp</Filter>
+    </ClInclude>
+    <ClInclude Include="assimp\material.h">
+      <Filter>Source Files\assimp</Filter>
+    </ClInclude>
+    <ClInclude Include="assimp\matrix3x3.h">
+      <Filter>Source Files\assimp</Filter>
+    </ClInclude>
+    <ClInclude Include="assimp\matrix4x4.h">
+      <Filter>Source Files\assimp</Filter>
+    </ClInclude>
+    <ClInclude Include="assimp\mesh.h">
+      <Filter>Source Files\assimp</Filter>
+    </ClInclude>
+    <ClInclude Include="assimp\metadata.h">
+      <Filter>Source Files\assimp</Filter>
+    </ClInclude>
+    <ClInclude Include="assimp\NullLogger.hpp">
+      <Filter>Source Files\assimp</Filter>
+    </ClInclude>
+    <ClInclude Include="assimp\port\AndroidJNI\AndroidJNIIOSystem.h">
+      <Filter>Source Files\assimp</Filter>
+    </ClInclude>
+    <ClInclude Include="assimp\postprocess.h">
+      <Filter>Source Files\assimp</Filter>
+    </ClInclude>
+    <ClInclude Include="assimp\ProgressHandler.hpp">
+      <Filter>Source Files\assimp</Filter>
+    </ClInclude>
+    <ClInclude Include="assimp\quaternion.h">
+      <Filter>Source Files\assimp</Filter>
+    </ClInclude>
+    <ClInclude Include="assimp\scene.h">
+      <Filter>Source Files\assimp</Filter>
+    </ClInclude>
+    <ClInclude Include="assimp\texture.h">
+      <Filter>Source Files\assimp</Filter>
+    </ClInclude>
+    <ClInclude Include="assimp\types.h">
+      <Filter>Source Files\assimp</Filter>
+    </ClInclude>
+    <ClInclude Include="assimp\vector2.h">
+      <Filter>Source Files\assimp</Filter>
+    </ClInclude>
+    <ClInclude Include="assimp\vector3.h">
+      <Filter>Source Files\assimp</Filter>
+    </ClInclude>
+    <ClInclude Include="assimp\version.h">
+      <Filter>Source Files\assimp</Filter>
+    </ClInclude>
+    <ClInclude Include="ParameterProviderRegistry.h">
+      <Filter>Source Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Techniques\RenderTask.h">
+      <Filter>Source Files\Techniques</Filter>
+    </ClInclude>
+    <ClInclude Include="Techniques\QuadTasks.h">
+      <Filter>Source Files\Techniques</Filter>
+    </ClInclude>
+    <ClInclude Include="Techniques\PBR.h" />
+    <ClInclude Include="Techniques\SH.h" />
+    <ClInclude Include="Techniques\IntegrateEnv.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="Humus\Graphics\Primitives.pipeline">
+      <Filter>Source Files\Humus\Graphics</Filter>
+    </None>
+    <None Include="Humus\Util\Font.pipeline">
+      <Filter>Source Files\Humus\Util</Filter>
+    </None>
+    <None Include="assimp\color4.inl">
+      <Filter>Source Files\assimp</Filter>
+    </None>
+    <None Include="assimp\material.inl">
+      <Filter>Source Files\assimp</Filter>
+    </None>
+    <None Include="assimp\matrix3x3.inl">
+      <Filter>Source Files\assimp</Filter>
+    </None>
+    <None Include="assimp\matrix4x4.inl">
+      <Filter>Source Files\assimp</Filter>
+    </None>
+    <None Include="assimp\quaternion.inl">
+      <Filter>Source Files\assimp</Filter>
+    </None>
+    <None Include="assimp\vector2.inl">
+      <Filter>Source Files\assimp</Filter>
+    </None>
+    <None Include="assimp\vector3.inl">
+      <Filter>Source Files\assimp</Filter>
+    </None>
+  </ItemGroup>
+  <ItemGroup>
+    <Text Include="Humus\readme.txt">
+      <Filter>Source Files\Humus</Filter>
+    </Text>
+  </ItemGroup>
+</Project>
