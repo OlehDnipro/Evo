@@ -1110,7 +1110,7 @@ Device CreateDevice(DeviceParams& params)
 	device->m_BackBufferRenderPass = CreateRenderPass(device, format, IMGFMT_INVALID, FLAG_NONE);
 	
 	if (!CreateBackBufferSetups(device, params.m_Width, params.m_Height, format))
-		return false;
+		return nullptr;
 
 	device->m_MainContext = CreateContext(device, false);
 
