@@ -29,7 +29,7 @@ float D_GGX(float3 n, float3 h, float roughness)
 	return k*k/PI;
 }
 // Smith-GGX geometry + Heitz microfacet height
-// this func = G/(4(n*v)(*l))
+// this func = G/(4(n*v)(n*l))
 // V =  0.5( (n*l)sqrt((n*v)^2 * (1-r*r) +r*r) + (n*v)sqrt((n*l)^2 * (1-r*r) +r*r))
 float V_GGX(float NoL, float NoV, float roughness)
 {

@@ -1,0 +1,213 @@
+/* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *\ 
+*Copyright 2021 Oleh Sopilniak																																	*
+*																																								*
+* Permission is hereby granted, free of charge, to any person obtaining a copy of this software																	*
+* and associated documentation files (the "Software"), to deal in the Software without restriction,																*
+* including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense,															*
+* and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so,															*
+*  subject to the following conditions:																															*
+*																																								*
+* The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.								*	
+*																																								*
+* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,			*
+* FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, *
+* WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.    *
+* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *  */
+
+struct ConvConst
+{
+	float roughness;
+	int mip;
+};
+[Permutations]
+PERMUTATIONS_BEGIN
+	MUTE ConvEnv  CONVOLUTE_ENV_MAP
+	MUTE ConvBRDF CONVOLUTE_BRDF
+PERMUTATIONS_END
+[Rootsig]
+ROOT_BEGIN
+	ST_BEGIN Samplers
+		SAMPLER		SamplerState ColorSampler;
+	ST_END
+	RT_BEGIN Resources
+		CBUFFER ConvConst ConvParams;
+		TEXTURE TextureCube<float4> EnvTex;
+		RWTEXTURE RWTexture2DArray<float4> OutTex;
+		RWTEXTURE RWTexture2D<float4> BRDFTex;
+	RT_END
+ROOT_END
+[Compute: CS]
+#define PI 3.14159
+#include "PBRMath.h" 
+
+float RadicalInverse_VdC(uint bits) 
+{
+    bits = (bits << 16u) | (bits >> 16u);
+    bits = ((bits & 0x55555555u) << 1u) | ((bits & 0xAAAAAAAAu) >> 1u);
+    bits = ((bits & 0x33333333u) << 2u) | ((bits & 0xCCCCCCCCu) >> 2u);
+    bits = ((bits & 0x0F0F0F0Fu) << 4u) | ((bits & 0xF0F0F0F0u) >> 4u);
+    bits = ((bits & 0x00FF00FFu) << 8u) | ((bits & 0xFF00FF00u) >> 8u);
+    return float(bits) * 2.3283064365386963e-10; // / 0x100000000
+}
+// ----------------------------------------------------------------------------
+float2 Hammersley(uint i, uint N)
+{
+    return float2(float(i)/float(N), RadicalInverse_VdC(i));
+}  
+float3 ImportanceSampleGGX(float2 Xi, float3 N, float roughness)
+{
+    float a = roughness*roughness;
+	
+    float phi = 2.0 * PI * Xi.x;
+    float cosTheta = sqrt((1.0 - Xi.y) / (1.0 + (a*a - 1.0) * Xi.y));
+    float sinTheta = sqrt(1.0 - cosTheta*cosTheta);
+	
+    // from spherical coordinates to cartesian coordinates
+    float3 H;
+    H.x = cos(phi) * sinTheta;
+    H.y = sin(phi) * sinTheta;
+    H.z = cosTheta;
+	
+    // from tangent-space vector to world-space sample vector
+    float3 up        = abs(N.z) < 0.999 ? float3(0.0, 0.0, 1.0) : float3(1.0, 0.0, 0.0);
+    float3 tangent   = normalize(cross(up, N));
+    float3 bitangent = cross(N, tangent);
+	
+    float3 sampleVec = tangent * H.x + bitangent * H.y + N * H.z;
+    return normalize(sampleVec);
+}
+  
+float3 IntegrateEnvMap(float3 sampleDir, float roughness)
+{
+	float3 N = sampleDir;
+	float3 R = N;
+	float3 V = R;
+
+	const uint SAMPLE_COUNT = 1024u;
+	float totalWeight = 0.0;   
+	float3 prefilteredColor = (float3)0;     
+	for(uint i = 0u; i < SAMPLE_COUNT; ++i)
+	{
+		float2 Xi = Hammersley(i, SAMPLE_COUNT);
+		float3 H  = ImportanceSampleGGX(Xi, N, roughness);
+		float3 L  = normalize(2.0 * dot(V, H) * H - V);
+
+		float NdotL = max(dot(N, L), 0.0);
+		if(NdotL > 0.0)
+		{
+			prefilteredColor += EnvTex.Sample(ColorSampler, sampleDir).rgb * NdotL;
+			totalWeight      += NdotL;
+		}
+	}
+	prefilteredColor = prefilteredColor / totalWeight;
+	return prefilteredColor;
+}
+
+float2 IntegrateBRDF(float NdotV, float roughness)
+{
+    float3 V;
+    V.x = sqrt(1.0 - NdotV*NdotV);
+    V.y = 0.0;
+    V.z = NdotV;
+
+    float A = 0.0;
+    float B = 0.0;
+
+    float3 N = float3(0.0, 0.0, 1.0);
+
+    const uint SAMPLE_COUNT = 1024u;
+    for(uint i = 0u; i < SAMPLE_COUNT; ++i)
+    {
+        float2 Xi = Hammersley(i, SAMPLE_COUNT);
+        float3 H  = ImportanceSampleGGX(Xi, N, roughness);
+        float3 L  = normalize(2.0 * dot(V, H) * H - V);
+
+        float NdotL = max(L.z, 0.0);
+        float NdotV = max(V.z, 0.0);
+
+		float NdotH = max(H.z, 0.0);
+        float VdotH = max(dot(V, H), 0.0);
+
+        if(NdotL > 0.0)
+        {
+            float G_Vis = V_GGX(NdotL, NdotV, roughness);///mess
+            float Fc = pow(1.0 - VdotH, 5.0);
+
+            A += (1.0 - Fc) * G_Vis;
+            B += Fc * G_Vis;
+        }
+    }
+    A /= float(SAMPLE_COUNT);
+    B /= float(SAMPLE_COUNT);
+    return float2(A, B);
+}
+
+#define Face_Top 2   
+#define Face_Bottom 3  
+#define Face_Back 5 
+#define Face_Forward 4  
+#define Face_Left 1
+#define Face_Right 0  
+[numthreads(32, 32, 1)]
+void main(uint3 DTid : SV_DispatchThreadID) 
+{
+
+	uint2 res = uint2(1024 >> ConvParams.mip ,1024 >> ConvParams.mip);
+	uint x = DTid.x;
+	uint y = DTid.y;
+#ifdef CONVOLUTE_ENV_MAP
+	uint face = DTid.z;
+	if(x >= res.x || y >= res.y || face >=6 )
+		return;
+
+	// Calculate directional vector  
+   // TODO: Correct direction to sample center of texel.  
+   float3 direction = normalize(float3((float)x / (float)(res.x - 1) * 2.0f - 1.0f, 1.0f - (float)y / (float)(res.y - 1) * 2.0f, 1.0f));  //forward
+   
+   // Rotate to match cubemap face  
+   switch (face)  
+   {  
+   
+	 case Face_Back:  
+	 {  
+	   direction[0] *= -1.0f;  
+	   direction[2] *= -1.0f;  
+	 }break;  
+	 case Face_Left:  
+	 {  
+	   float const temp = direction[0];  
+	   direction[0] = direction[2];  
+	   direction[2] = -temp;  
+	 } break;  
+	 case Face_Right:  
+	 {  
+	   float const temp = direction[0];  
+	   direction[0] = -direction[2];  
+	   direction[2] = temp;  
+	 } break;  
+	 case Face_Top:  
+	 {  
+	   float const temp = direction[1];  
+	   direction[1] = direction[2];  
+	   direction[2] = -temp;  
+	 } break;  
+	 case Face_Bottom:  
+	 {  
+	   float const temp = direction[1];  
+	   direction[1] = -direction[2];  
+	   direction[2] = temp;  
+	 } break;  
+	 default:  
+	   break;  
+   } 
+   
+	float3 color = IntegrateEnvMap(direction, ConvParams.roughness);
+	OutTex[uint3(x,y,face)] = float4(color.r,color.g, 0.5, 1.0);
+#else
+	float NoV = 1.0* x / res.x;
+	float rougness = 1 - (1.0* y /res.y);
+	BRDFTex[uint2(x,y)] = float4(IntegrateBRDF(NoV, rougness).xy,0,1); 	
+#endif
+  
+}
+

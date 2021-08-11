@@ -21,6 +21,7 @@
 #include "Techniques/ShadowMapCascade.h"
 #include "Techniques/PBR.h"
 #include "Techniques/SH.h"
+#include "Techniques/IntegrateEnv.h"
 
 #include "ParameterProviderRegistry.h"
 /*
@@ -117,7 +118,7 @@ class EvoApp : public DemoApp
 	ShadowMapCascade m_Shadows;
 	CTreeFieldCollection m_TreeField;
 	Texture m_RingDrop[2];
-	Texture m_CubeMap, m_SHCubeMap;
+	Texture m_CubeMap, m_SHCubeMap, m_SpecularEnvMap, m_BRDFLookup;
 	Texture m_Reflection;
 	Texture m_NormalTile;
 	CTexturedQuadGeometry m_Quad;
@@ -128,6 +129,7 @@ class EvoApp : public DemoApp
 	CWaterDropTask m_DropTask;
 	CWaterTask m_WaterTask;
 	CComputeSHTask m_ComputeSHTask;
+	CIntegrateEnvTask m_IntegrateEnvTask;
 	CPBRTask m_PBR;
 	CSphereGeometry m_Spheres;
 	uint m_CurDropTex = 1;
@@ -223,12 +225,32 @@ public:
 		cube_params.m_Slices = 2;
 		m_CubeMap = CreateTexture(m_Device, cube_params);
 		cube_params.m_UnorderedAccess = true;
-		cube_params.m_Slices = 1;
+		cube_params.m_Type = TextureType::TEX_CUBE;
 		cube_params.m_Name = "SphericalHarmonicsDiffuseMap";
 		m_SHCubeMap = CreateTexture(m_Device, cube_params);
 
+		cube_params.m_Type = TextureType::TEX_CUBE;
+		cube_params.m_MipCount = 6;
+		cube_params.m_Slices = 1;
+		cube_params.m_Name = "SpecularEnvMap";
+		m_SpecularEnvMap = CreateTexture(m_Device, cube_params);
+
+		STextureParams lut_params;
+		lut_params.m_Width = 1024;
+		lut_params.m_Height = 1024;
+		lut_params.m_Format = IMGFMT_RGBA8;
+		lut_params.m_MSAASampleCount = 1;
+		lut_params.m_ShaderResource = true;
+		lut_params.m_UnorderedAccess = true;
+
+		m_BRDFLookup = CreateTexture(m_Device, lut_params);
+
 		m_ComputeSHTask.SetTextures({ m_CubeMap, {1,-1,-1} }, m_SHCubeMap);
 		m_ComputeSHTask.CreateResources(m_Device);
+
+		m_IntegrateEnvTask.SetTextures({ m_CubeMap, {0,-1,-1} }, { m_SpecularEnvMap , {0, 0,-1} }, m_BRDFLookup);
+		m_IntegrateEnvTask.CreateResources(m_Device);
+		
 		m_NormalTile = CreateTexture(m_Device, "../../Textures/water.dds", 1);
 		float depthFar[2] = { 1,0 };
 		float gray[4] = { 0.5, 0.5, 0.5, 0.5 };
@@ -307,6 +329,7 @@ public:
 		m_Shadows.SetCubeProjection(false);
 		m_ComputeSHTask.Execute(context, CComputeSHTask::Pass::ComputeBase);
 
+
 	}
 	~EvoApp()
 	{
@@ -364,7 +387,10 @@ public:
 	}
 
 	void DrawFrame(Context context, uint buffer_index)
-	{
+	{/*
+		m_IntegrateEnvTask.Execute(context, CIntegrateEnvTask::Pass::ConvEnv);
+		m_IntegrateEnvTask.Execute(context, CIntegrateEnvTask::Pass::ConvBRDF);*/
+		
 		static bool SHReady = false;
 		if (!SHReady)
 		{
@@ -457,7 +483,7 @@ public:
 		EndRenderPass(context);
 		
 		Barrier(context, { { bb , EResourceState::RS_PRESENT} });
-
+		
 
 		frame++;
 	};
