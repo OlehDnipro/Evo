@@ -813,7 +813,7 @@ Device CreateDevice(DeviceParams& params)
 	if (FAILED(CreateDXGIFactory2(flags, __uuidof(IDXGIFactory2), (void **) &dxgi_factory)))
 	{
 		ErrorMsg("Couldn't create DXGIFactory");
-		return false;
+		return nullptr;
 	}
 
 	IDXGIAdapter1* dxgi_adapter = nullptr;
@@ -1017,7 +1017,7 @@ Device CreateDevice(DeviceParams& params)
 	device->m_BackBufferRenderPass = CreateRenderPass(device, IMGFMT_RGBA8, IMGFMT_INVALID, FLAG_NONE);//warning
 
 	if (!CreateBackBufferSetups(device, params.m_Width, params.m_Height))
-		return false;
+		return nullptr;
 
 	for (int i = 0; i < TextureType::TEXT_TYPE_COUNT; i++)
 	{

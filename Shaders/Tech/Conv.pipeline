@@ -95,7 +95,7 @@ float3 IntegrateEnvMap(float3 sampleDir, float roughness)
 		float NdotL = max(dot(N, L), 0.0);
 		if(NdotL > 0.0)
 		{
-			prefilteredColor += EnvTex.Sample(ColorSampler, sampleDir).rgb * NdotL;
+			//prefilteredColor += EnvTex.Sample(ColorSampler, sampleDir).rgb * NdotL;//wip  - fix later
 			totalWeight      += NdotL;
 		}
 	}

@@ -49,6 +49,8 @@
 #define USE_DEBUG_MARKERS
 #define USE_DEBUG_UTILS
 //#endif
+#define VALIDATION_LAYER_NAME "VK_LAYER_KHRONOS_validation"
+
 struct SlicedBuffer
 {
 	Buffer	m_Buffer;
@@ -791,11 +793,11 @@ Device CreateDevice(DeviceParams& params)
 	
 #if defined(USE_DEBUG_UTILS) && defined(USE_DEBUG_MARKERS)
 	// Enable validation layer
-	static const char* validation_layers[] = { "VK_LAYER_LUNARG_standard_validation" , "VK_LAYER_RENDERDOC_Capture" };
+	static const char* validation_layers[] = { VALIDATION_LAYER_NAME , "VK_LAYER_RENDERDOC_Capture" };
 	instance_create_info.enabledLayerCount = 2;
 	instance_create_info.ppEnabledLayerNames = validation_layers;
 #elif defined (USE_DEBUG_UTILS)
-	static const char* validation_layers[] = { "VK_LAYER_LUNARG_standard_validation" };
+	static const char* validation_layers[] = { VALIDATION_LAYER_NAME };
 	instance_create_info.enabledLayerCount = 1;
 	instance_create_info.ppEnabledLayerNames = validation_layers;
 #elif defined(USE_DEBUG_MARKERS)
