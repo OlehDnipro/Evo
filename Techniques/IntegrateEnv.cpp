@@ -58,53 +58,63 @@ bool CIntegrateEnvTask::CreateResources(Device device)
 	m_SamplerTable = CreateSamplerTable(m_Device, m_Cache.GetRootSignature(), NConv::Samplers, samplers);
 
 }
-
+#define MIPS 6
 void CIntegrateEnvTask::Execute(Context context, Pass pass)
 {
-	ConvConst& params = m_Provider.m_ModelConst.Get();
-	params.mip = 0;
-	params.roughness = 0.2;
-	InitPipeline(context);
-	SetRootSignature(context, m_Cache.GetRootSignature());
-
-	SetPipeline(context, pass == Pass::ConvEnv? m_PipelineEnv: m_PipelineBRDF);
-
-	SetComputeSamplerTable(context, NConv::Samplers, m_SamplerTable);
-
-	int s = sizeof(int);
-	m_Provider.PrepareConstantBuffer(context, m_Provider.m_ModelConst.GetPtr());
-	m_Cache.GatherParameters({
-								*m_Provider.m_ModelConst.GetPtr(),
-								m_Provider.m_EnvTex,
-								m_Provider.m_OutTex,
-								m_Provider.m_Brdf,
-
-		},
-		NConv::Resources, 0);
-
-	ResourceTable rt = CreateResourceTable(GetDevice(context), m_Cache.GetRootSignature(), NConv::Resources, nullptr, 
-		m_Cache.GetDescriptorsCount(NConv::Resources), context);
-
-	m_Cache.UpdateResourceTable(GetDevice(context), NConv::Resources, rt);
-
-	SetComputeResourceTable(context, NConv::Resources, rt);
-
-	DestroyResourceTable(GetDevice(context), rt);
-	if (pass == Pass::ConvEnv)
+	uint sizeX = m_Provider.m_TexSize.x;
+	uint sizeY = m_Provider.m_TexSize.y;
+	for (int i = 0; i < MIPS; i++)
 	{
-		Barrier(context, { { m_Provider.m_OutTex , EResourceState::RS_UNORDERED_ACCESS } });
+		if (pass != Pass::ConvEnv && i > 0)
+			break;
 
-		Dispatch(context, (m_Provider.m_TexSize.x - 1) / 32 + 1, (m_Provider.m_TexSize.y - 1) / 32 + 1, 6);
+		ConvConst& params = m_Provider.m_ModelConst.Get();
+		params.mip = i;
+		params.roughness =  i * 0.05;
 
+		InitPipeline(context);
+		SetRootSignature(context, m_Cache.GetRootSignature());
+
+		SetPipeline(context, pass == Pass::ConvEnv ? m_PipelineEnv : m_PipelineBRDF);
+
+		SetComputeSamplerTable(context, NConv::Samplers, m_SamplerTable);
+
+		int s = sizeof(int);
+		m_Provider.PrepareConstantBuffer(context, m_Provider.m_ModelConst.GetPtr());
+		m_Cache.GatherParameters({
+									*m_Provider.m_ModelConst.GetPtr(),
+									m_Provider.m_EnvTex,
+									{ (Texture)m_Provider.m_OutTex.m_Resource, {0, i, -1} },
+									m_Provider.m_Brdf,
+
+			},
+			NConv::Resources, 0);
+
+		ResourceTable rt = CreateResourceTable(GetDevice(context), m_Cache.GetRootSignature(), NConv::Resources, nullptr,
+			m_Cache.GetDescriptorsCount(NConv::Resources), context);
+
+		m_Cache.UpdateResourceTable(GetDevice(context), NConv::Resources, rt);
+
+		SetComputeResourceTable(context, NConv::Resources, rt);
+
+		DestroyResourceTable(GetDevice(context), rt);
+		if (pass == Pass::ConvEnv)
+		{
+			Barrier(context, { { { (Texture)m_Provider.m_OutTex.m_Resource, {0, i, -1} } , EResourceState::RS_UNORDERED_ACCESS } });
+
+			Dispatch(context, ( sizeX - 1) / 32 + 1, (sizeY - 1) / 32 + 1, 6);
+			sizeX = sizeX >> 1;
+			sizeY = sizeY >> 1;
+
+		}
+		else
+		{
+			Barrier(context, { { m_Provider.m_Brdf , EResourceState::RS_UNORDERED_ACCESS } });
+
+			Dispatch(context, (m_Provider.m_TexSize.x - 1) / 32 + 1, (m_Provider.m_TexSize.y - 1) / 32 + 1, 1);
+
+		}
 	}
-	else
-	{
-		Barrier(context, { { m_Provider.m_Brdf , EResourceState::RS_UNORDERED_ACCESS } });
-
-		Dispatch(context, (m_Provider.m_TexSize.x - 1) / 32 + 1, (m_Provider.m_TexSize.y - 1) / 32 + 1, 1);
-
-	}
-	
 }
 
 void CIntegrateEnvTask::InitPipeline(Context context)

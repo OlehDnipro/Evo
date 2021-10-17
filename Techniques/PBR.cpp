@@ -134,9 +134,9 @@ void CSphereGeometry::DefineVertexFormat(vector<AttribDesc>& format)
 
 void CSphereGeometry::Draw(Context context, CShaderCache& cache, int resources_slot)
 {
-	for (int i = 0; i < 4; i++)
+	for (int i = 0; i < 5; i++)
 	{
-		for (int j = 0; j < 4; j++)
+		for (int j = 0; j < 5; j++)
 		{
 			float4x4 mtx;
 			mtx.identity();
@@ -145,7 +145,7 @@ void CSphereGeometry::Draw(Context context, CShaderCache& cache, int resources_s
 			mtx.rows[2].z = 0.1;
 			mtx = mul(translate(float3(3 + 0.25 * i, 0, 2.5 - 0.25 * j)), mtx);
 			m_Provider.Get().model = mtx;
-			m_Provider.Get().material = float4(0.1 + 0.2 * i, 0.1 + 0.2 * j, 0.75, 0);
+			m_Provider.Get().material = float4(0. + 0.2 * i, 0 + 0.2 * j, 0.75, 0);
 			m_Provider.Get().baseColor = float3(0.2, 0, 1);
 			{
 				IParameterProvider* prov[] = { &m_Provider };
