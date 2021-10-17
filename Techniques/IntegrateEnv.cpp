@@ -63,7 +63,7 @@ void CIntegrateEnvTask::Execute(Context context, Pass pass)
 {
 	ConvConst& params = m_Provider.m_ModelConst.Get();
 	params.mip = 0;
-	params.roughness = 0.5;
+	params.roughness = 0.2;
 	InitPipeline(context);
 	SetRootSignature(context, m_Cache.GetRootSignature());
 

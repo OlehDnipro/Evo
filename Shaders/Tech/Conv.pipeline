@@ -42,18 +42,46 @@ ROOT_END
 
 float RadicalInverse_VdC(uint bits) 
 {
-    bits = (bits << 16u) | (bits >> 16u);
+    /*bits = (bits << 16u) | (bits >> 16u);
     bits = ((bits & 0x55555555u) << 1u) | ((bits & 0xAAAAAAAAu) >> 1u);
     bits = ((bits & 0x33333333u) << 2u) | ((bits & 0xCCCCCCCCu) >> 2u);
     bits = ((bits & 0x0F0F0F0Fu) << 4u) | ((bits & 0xF0F0F0F0u) >> 4u);
-    bits = ((bits & 0x00FF00FFu) << 8u) | ((bits & 0xFF00FF00u) >> 8u);
-    return float(bits) * 2.3283064365386963e-10; // / 0x100000000
+    bits = ((bits & 0x00FF00FFu) << 8u) | ((bits & 0xFF00FF00u) >> 8u);*///not supported at shader model 5
+    return float(reversebits(bits)) * 2.3283064365386963e-10; // / 0x100000000
 }
 // ----------------------------------------------------------------------------
 float2 Hammersley(uint i, uint N)
 {
     return float2(float(i)/float(N), RadicalInverse_VdC(i));
-}  
+} 
+
+float mod(float x, float y)
+{
+  return x - y * floor(x/y);
+}
+float VanDerCorput(uint n, uint base)
+{
+    float invBase = 1.0 / float(base);
+    float denom   = 1.0;
+    float result  = 0.0;
+	[unroll]
+    for(uint i = 0u; i < 32u; ++i)
+    {
+        if(n > 0u)
+        {
+            denom   = mod(float(n), 2.0);
+            result += denom * invBase;
+            invBase = invBase / 2.0;
+            n       = uint(float(n) / 2.0);
+        }
+    }
+
+    return result;
+}
+float2 HammersleyNoBit(uint i, uint N)
+{
+    return float2(float(i)/float(N), VanDerCorput(i, 2u));
+}
 float3 ImportanceSampleGGX(float2 Xi, float3 N, float roughness)
 {
     float a = roughness*roughness;
@@ -82,7 +110,7 @@ float3 IntegrateEnvMap(float3 sampleDir, float roughness)
 	float3 N = sampleDir;
 	float3 R = N;
 	float3 V = R;
-
+ 
 	const uint SAMPLE_COUNT = 1024u;
 	float totalWeight = 0.0;   
 	float3 prefilteredColor = (float3)0;     
@@ -95,7 +123,7 @@ float3 IntegrateEnvMap(float3 sampleDir, float roughness)
 		float NdotL = max(dot(N, L), 0.0);
 		if(NdotL > 0.0)
 		{
-			//prefilteredColor += EnvTex.Sample(ColorSampler, sampleDir).rgb * NdotL;//wip  - fix later
+			prefilteredColor += EnvTex.SampleLevel(ColorSampler, L, 0).rgb * NdotL;
 			totalWeight      += NdotL;
 		}
 	}
@@ -130,7 +158,8 @@ float2 IntegrateBRDF(float NdotV, float roughness)
 
         if(NdotL > 0.0)
         {
-            float G_Vis = V_GGX(NdotL, NdotV, roughness);///mess
+			float G = GeometrySmith(N, V, L, roughness);
+            float G_Vis = (G * VdotH) / (NdotH * NdotV);
             float Fc = pow(1.0 - VdotH, 5.0);
 
             A += (1.0 - Fc) * G_Vis;
@@ -202,10 +231,10 @@ void main(uint3 DTid : SV_DispatchThreadID)
    } 
    
 	float3 color = IntegrateEnvMap(direction, ConvParams.roughness);
-	OutTex[uint3(x,y,face)] = float4(color.r,color.g, 0.5, 1.0);
+	OutTex[uint3(x,y,face)] = float4(color, 1.0);
 #else
-	float NoV = 1.0* x / res.x;
-	float rougness = 1 - (1.0* y /res.y);
+	float NoV = 1.0* (x+0.5) / res.x;
+	float rougness = 1 - (1.0* (y+0.5)/ res.y);
 	BRDFTex[uint2(x,y)] = float4(IntegrateBRDF(NoV, rougness).xy,0,1); 	
 #endif
   
