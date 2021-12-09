@@ -103,7 +103,7 @@ void main(VertexIn vert, out PixelIn res)
 }
 
 [Pixel: PS]
-#define ambient 0.3
+#define ambient 0.32
 #define PCF_step 1.0f/4096
 float SamplePCF(float4 shadowPos, int cascade)
 {
@@ -143,17 +143,21 @@ void main(PixelIn pix, out float4 outFragColor: SV_TARGET)
 		if(pix.posV.z > ShadowConst.cascadeSplits[i])
 			cascade = i + 1;
 	}
-
 	float4 shadowPos = mul(ShadowConst.lightViewProjection[cascade], float4(pix.posW, 1 ));
 	shadowPos /= shadowPos.w;
 	float diffuse = max(SamplePCF(shadowPos, cascade)*dot(N, L), ambient);
 #else
-	float diffuse = max(dot(N, L), ambient);
+	float diffuse =    max(dot(N, L), ambient);
 #endif
 	float3 lightColor = float3(1.0f,1.0f,1.0f);
 	outFragColor.rgb = max(lightColor * (diffuse * color.rgb), float3(0.0f, 0.0f, 0.0f));
 	outFragColor.a = color.a;
 	
+	//if(pix.posW.x < 3.25)
+	//	outFragColor.r +=0.3;
+	//if(pix.posW.z < 1.75)
+	//	outFragColor.g +=0.3;
+
 #else
 	if(ModelConst.alphaCheck)
 	{

@@ -57,7 +57,9 @@ groupshared ShPoly ShSumPerArea[3];
 [numthreads(32, 32, 1)]
 void main(uint3 DTid : SV_DispatchThreadID) 
 {
-	uint2 res= uint2(1024,1024);
+	uint size_x, size_y, ns;
+	EnvTex.GetDimensions(size_x,size_y, ns);
+	uint2 res= uint2(size_x,size_y);
 	uint x = DTid.x;
 	uint y = DTid.y;
 	uint face = DTid.z;
@@ -74,25 +76,26 @@ void main(uint3 DTid : SV_DispatchThreadID)
    float3 direction = normalize(float3((float)x / (float)(res.x - 1) * 2.0f - 1.0f, 1.0f - (float)y / (float)(res.y - 1) * 2.0f, 1.0f));  //forward
    
    // Rotate to match cubemap face  
-   switch (face)  
+ switch (face)  
    {  
    
 	 case Face_Back:  
 	 {  
 	   direction[0] *= -1.0f;  
 	   direction[2] *= -1.0f;  
+	   
 	 }break;  
 	 case Face_Left:  
 	 {  
 	   float const temp = direction[0];  
-	   direction[0] = direction[2];  
-	   direction[2] = -temp;  
+	   direction[0] = -direction[2];  
+	   direction[2] = temp;  
 	 } break;  
 	 case Face_Right:  
 	 {  
 	   float const temp = direction[0];  
-	   direction[0] = -direction[2];  
-	   direction[2] = temp;  
+	   direction[0] = direction[2];  
+	   direction[2] = -temp;  
 	 } break;  
 	 case Face_Top:  
 	 {  

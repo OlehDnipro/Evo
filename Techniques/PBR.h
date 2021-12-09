@@ -54,11 +54,14 @@ public:
 	virtual bool CreateResources(Device device);
 	virtual void Draw(Context context);
 	virtual void SetCameraLookAt(vec3 eye, vec3 target, vec3 up);
+	void SetEnv(Texture tex, Texture sh, Texture brdf) { m_Env = tex; m_SH = sh; m_Brdf = brdf; };
 
 private:
 	Pipeline m_Pipeline;
 	void InitPipeline(Context context);
 	CViewportParameterProvider m_ViewportProvider;
+	SamplerTable m_SamplerTable;
+	Texture m_Env, m_SH, m_Brdf;
 
 
 };

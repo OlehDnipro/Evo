@@ -109,7 +109,6 @@ public:
 
 #define WAVE_OFFSET 20
 
-
 class EvoApp : public DemoApp
 {
 	Texture m_ColorBuffer, m_ShadowMap;
@@ -118,7 +117,7 @@ class EvoApp : public DemoApp
 	ShadowMapCascade m_Shadows;
 	CTreeFieldCollection m_TreeField;
 	Texture m_RingDrop[2];
-	Texture m_CubeMap, m_SHCubeMap, m_SpecularEnvMap, m_BRDFLookup;
+	Texture m_CubeMapLayered, m_CubeMapSingle, m_SHCubeMap, m_SpecularEnvMap, m_BRDFLookup;
 	Texture m_Reflection;
 	Texture m_NormalTile;
 	CTexturedQuadGeometry m_Quad;
@@ -165,6 +164,52 @@ public:
 
 		return true;
 	}
+
+	void RenderEnvMap(Context context, Texture cubeMap,vec3 eye, int mip)
+	{
+		for (int i = 0; i < 6; i++)
+		{
+			SetRenderTarget(context, { cubeMap, {mip, -1, i} }, 0);
+			SetDepthTarget(context, m_CubeDepth);
+			//if (i == 5)
+			//	continue;
+			vec3 target;
+			vec3 up;
+			switch (i)
+			{
+			case 0:
+				target = eye + vec3(1, 0, 0);//x+
+				up = vec3(0, 1, 0);
+				break;
+			case 1:
+				target = eye + vec3(-1, 0, 0);//x
+				up = vec3(0, 1, 0);
+				break;
+			case 2:
+				target = eye + vec3(0, 1, 0);//y+
+				up = vec3(0, 0, -1);
+				break;
+			case 3:
+				target = eye + vec3(0, -1, 0);//y-
+				up = vec3(0, 0, 1);
+				break;
+			case 4:
+				target = eye + vec3(0, 0, 1);//z+
+				up = vec3(0, 1, 0);
+				break;
+			case 5:
+				target = eye + vec3(0, 0, -1);//z-
+				up = vec3(0, 1, 0);
+				break;
+			}
+			m_Shadows.SetCameraLookAt(eye, target, up);
+			BeginRenderPass(context, "CubeRender");
+			m_Shadows.SetPassParameters(context, ShadowMapCascade::PassEnum::NoShadow);
+			m_Shadows.Draw(context);
+			EndRenderPass(context);
+		}
+	}
+
 	void CreateRenderSetups()
 	{
 		STextureParams db_params;
@@ -223,21 +268,31 @@ public:
 		cube_params.m_RenderTarget = true;
 		cube_params.m_ShaderResource = true;
 		cube_params.m_Slices = 2;
-		m_CubeMap = CreateTexture(m_Device, cube_params);
+		m_CubeMapLayered = CreateTexture(m_Device, cube_params);
+
+		cube_params.m_Width = 512;
+		cube_params.m_Height = 512;
+
+		cube_params.m_Slices = 1;
 		cube_params.m_UnorderedAccess = true;
 		cube_params.m_Type = TextureType::TEX_CUBE;
 		cube_params.m_Name = "SphericalHarmonicsDiffuseMap";
 		m_SHCubeMap = CreateTexture(m_Device, cube_params);
 
+
+		cube_params.m_Type = TextureType::TEX_CUBE;
+		cube_params.m_MipCount = 1;
+		cube_params.m_Name = "EnvMap";
+		m_CubeMapSingle = CreateTexture(m_Device, cube_params);
+
 		cube_params.m_Type = TextureType::TEX_CUBE;
 		cube_params.m_MipCount = 6;
-		cube_params.m_Slices = 1;
 		cube_params.m_Name = "SpecularEnvMap";
 		m_SpecularEnvMap = CreateTexture(m_Device, cube_params);
 
 		STextureParams lut_params;
-		lut_params.m_Width = 1024;
-		lut_params.m_Height = 1024;
+		lut_params.m_Width = 512;
+		lut_params.m_Height = 512;
 		lut_params.m_Format = IMGFMT_RGBA8;
 		lut_params.m_MSAASampleCount = 1;
 		lut_params.m_ShaderResource = true;
@@ -245,12 +300,13 @@ public:
 
 		m_BRDFLookup = CreateTexture(m_Device, lut_params);
 
-		m_ComputeSHTask.SetTextures({ m_CubeMap, {1,-1,-1} }, m_SHCubeMap);
+		m_ComputeSHTask.SetTextures({m_CubeMapSingle}, m_SHCubeMap);
 		m_ComputeSHTask.CreateResources(m_Device);
 
-		m_IntegrateEnvTask.SetTextures({ m_CubeMap, {0,-1,-1} }, { m_SpecularEnvMap , {0, 0,-1} }, m_BRDFLookup);
+		m_IntegrateEnvTask.SetTextures({ m_CubeMapSingle, {0,-1,-1} }, { m_SpecularEnvMap , {0, -1,-1} }, m_BRDFLookup);
 		m_IntegrateEnvTask.CreateResources(m_Device);
-		
+		m_PBR.SetEnv(m_SpecularEnvMap, m_SHCubeMap, m_BRDFLookup);
+
 		m_NormalTile = CreateTexture(m_Device, "../../Textures/water.dds", 1);
 		float depthFar[2] = { 1,0 };
 		float gray[4] = { 0.5, 0.5, 0.5, 0.5 };
@@ -265,71 +321,42 @@ public:
 		m_Shadows.SetCubeProjection(true);
 		Barrier(context, { { m_ShadowMap,  EResourceState::RS_SHADER_READ} });
 
-		Barrier(context, { { m_CubeMap,  EResourceState::RS_RENDER_TARGET} });
 		Barrier(context, { { m_CubeDepth,  EResourceState::RS_RENDER_TARGET} });
+
+		Barrier(context, { { m_CubeMapLayered,  EResourceState::RS_RENDER_TARGET} });
 		vec3 eye(3.25, 0.75, 1.75);
-		for (int k = 0; k < 2; k++)
-		{
-			if (k == 0)
-			{
-				m_TreeField.SetFilter(1);
-				SetClearColors(context, blueMasked, depthFar);
+		
 
-			}
-			else
-			{
-				m_TreeField.SetFilter(2);
-				SetClearColors(context, blue, depthFar);
-			}
-			for (int i = 0; i < 6; i++)
-			{
-				SetRenderTarget(context, { m_CubeMap, {k, -1, i} }, 0);
-				SetDepthTarget(context, m_CubeDepth);
+		m_TreeField.SetFilter(1);
+		SetClearColors(context, blueMasked, depthFar);
+		RenderEnvMap(context, m_CubeMapLayered, eye, 0);
 
-				vec3 target;
-				switch (i)
-				{
-				case 0:
-					target = eye + vec3(1, 0, 0);//x+
-					break;
-				case 1:
-					target = eye + vec3(-1, 0, 0);//x
-					break;
-				case 2:
-					target = eye + vec3(0, 1, 0);//y+
-					break;
-				case 3:
-					target = eye + vec3(0, -1, 0);//y-
-					break;
-				case 4:
-					target = eye + vec3(0, 0, 1);//z+
-					break;
-				case 5:
-					target = eye + vec3(0, 0, -1);//z-
-					break;
-				}
-				m_Shadows.SetCameraLookAt(eye, target, i == 2 || i == 3 ? vec3(0, 0, -1) : vec3(0, 1, 0));
-				BeginRenderPass(context, "CubeRender");
-				m_Shadows.SetPassParameters(context, ShadowMapCascade::PassEnum::NoShadow);
-				m_Shadows.Draw(context);
-				EndRenderPass(context);
-			}
-		}
-		Barrier(GetMainContext(m_Device), { { {m_CubeMap},  EResourceState::RS_SHADER_READ} });
+		m_TreeField.SetFilter(2);
+		SetClearColors(context, blue, depthFar);
+		RenderEnvMap(context, m_CubeMapLayered, eye, 1);
+
+		Barrier(context, { { m_CubeMapSingle,  EResourceState::RS_RENDER_TARGET} });
+
+		m_TreeField.SetFilter(-1);
+		SetClearColors(context, blue, depthFar);
+		RenderEnvMap(context, m_CubeMapSingle, eye, 0);
+
+
+		Barrier(GetMainContext(m_Device), { { {m_CubeMapLayered},  EResourceState::RS_SHADER_READ} });
+		Barrier(GetMainContext(m_Device), { { {m_CubeMapSingle},  EResourceState::RS_SHADER_READ} });
+
 		m_TreeField.SetFilter(-1);
 		m_Shadows.SetCubeProjection(false);
 		ResetCamera();
 		UpdateCamera();
 
 		m_Poly.UpdatePos(0.025, float2(0, 0));
-		m_WaterTask.SetTextures(/*m_SHCubeMap*/m_CubeMap, m_RingDrop[0], m_Reflection, m_NormalTile);
+		m_WaterTask.SetTextures(/*m_SHCubeMap*//* m_SpecularEnvMap*/m_CubeMapLayered, m_RingDrop[0], m_Reflection, m_NormalTile);
 		m_WaterTask.SetBox(eye, vec3(5.5, 1.75, 4), vec3(2, -0.25, -0.5), vec3(8.5, 1.75, 7), vec3(-1, -0.25, -3.5));
 		m_WaterTask.SetSpeed(WATERTEX_SPEED);
 		m_WaterTask.SetWaveOffset(WAVE_OFFSET);
 		m_Shadows.SetCubeProjection(false);
 		m_ComputeSHTask.Execute(context, CComputeSHTask::Pass::ComputeBase);
-
-
 	}
 	~EvoApp()
 	{
@@ -346,7 +373,7 @@ public:
 	void UpdateCamera()
 	{
 		float delta =  m_Timer.GetFrameTime()* m_CamSpeed;
-		
+
 		/*if (m_Keys[VK_LEFT] || m_Keys['A'])
 			m_Jaw -=  delta;
 		if (m_Keys[VK_RIGHT] || m_Keys['D'])
@@ -374,7 +401,8 @@ public:
 			m_CamPos -= m_CamDir * delta;
 		if (m_Keys[VK_UP] || m_Keys['W'])
 			m_CamPos += m_CamDir * delta;
-		
+		//m_CamPos = vec3(3.25, 0.75, 1.75);
+		//m_CamDir = vec3(1, 0, 0);
 		m_Shadows.SetCameraLookAt(m_CamPos, m_CamPos + m_CamDir, vec3(0,1,0));
 		m_WaterTask.SetCameraLookAt(m_CamPos, m_CamPos + m_CamDir, vec3(0, 1, 0));
 		m_PBR.SetCameraLookAt(m_CamPos, m_CamPos + m_CamDir, vec3(0, 1, 0));
@@ -387,16 +415,21 @@ public:
 	}
 
 	void DrawFrame(Context context, uint buffer_index)
-	{/*
-		m_IntegrateEnvTask.Execute(context, CIntegrateEnvTask::Pass::ConvEnv);
-		m_IntegrateEnvTask.Execute(context, CIntegrateEnvTask::Pass::ConvBRDF);*/
-		
-		static bool SHReady = false;
-		if (!SHReady)
+	{
+		static uint mip = 0;
+		if (mip < 6)
 		{
+			m_IntegrateEnvTask.Execute(context, CIntegrateEnvTask::Pass::ConvEnv, mip);
+			mip++;
+		}
+		static bool SHReady = false;
+		if (!SHReady && mip >=6)
+		{
+			m_IntegrateEnvTask.Execute(context, CIntegrateEnvTask::Pass::ConvBRDF);
 			m_ComputeSHTask.Execute(context, CComputeSHTask::Pass::ComputeTex);
 			SHReady = true;
 		}
+
 		static uint frame = 0;
 		float depthFar[2] = { 1,0 };
 		float gray[4] = { 0.5, 0.5, 0.5, 0.5 };

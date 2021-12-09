@@ -17,6 +17,7 @@
 struct ConvConst
 {
 	float roughness;
+	int size;
 	int mip;
 
 };
@@ -42,7 +43,7 @@ public:
 		ConvBRDF
 	};
 	 bool CreateResources(Device device);
-	 void Execute(Context context, Pass pass);
+	 void Execute(Context context, Pass pass, int mip = -1);
 	 void SetTextures(SResourceDesc env, SResourceDesc out, SResourceDesc brdf);
 	
 	 ~CIntegrateEnvTask();

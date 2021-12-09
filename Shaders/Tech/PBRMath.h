@@ -119,7 +119,7 @@ float D_Ashikhmin(float3 n, float3 h, float roughness) {
 	float cot2 = -cos2h / (a2 * sin2h);
 	return 1.0 / (PI * (4.0 * a2 + 1.0) * sin4h) * (4.0 * exp(cot2) + sin4h);
 }
-float3 BRDF(float3 baseColor, float3 v, float3 l, float3 n, float roughness, float metallness, float reflectance, bool aniso, bool clearCoat)
+float3 BRDF(float3 baseColor, float3 v, float3 l, float3 n, out float3 kDiffuse, out float3 kSpec, float roughness, float metallness, float reflectance, bool aniso, bool clearCoat)
 {
 	float3 diffuseColor = baseColor*(1-metallness);
 	float3 fresnelColor = 0.16*reflectance*reflectance*(1-metallness)+ baseColor*metallness;
@@ -132,12 +132,14 @@ float3 BRDF(float3 baseColor, float3 v, float3 l, float3 n, float roughness, flo
 	float LoH = clamp(dot(l,h), 0,1);
 	float VoH = clamp(dot(v,h), 0,1);
 	float a = roughness*roughness;
-	float3 Fd = FD_Burley(NoL, NoV, LoH, a)*diffuseColor;
+	kDiffuse = FD_Burley(NoL, NoV, LoH, a);
+	float3 Fd = kDiffuse*diffuseColor;
+	kSpec = FresnelSchlick(VoH, fresnelColor);
 	float3 Fr;
 	if(!aniso)
-		Fr = D_GGX(n,h,a)*V_GGX(NoL,NoV,a)*FresnelSchlick(VoH, fresnelColor);//isotropic
+		Fr = D_GGX(n,h,a)*V_GGX(NoL,NoV,a)*kSpec;//isotropic
 	else
-		Fr = D_GGX_Anisotropic(n, h, t, b, a)*V_SmithGGXCorrelated_Anisotropic(dot(t,v),dot(b,v),dot(t,l),dot(b,l), NoV, NoL, a)*FresnelSchlick(VoH, fresnelColor);
+		Fr = D_GGX_Anisotropic(n, h, t, b, a)*V_SmithGGXCorrelated_Anisotropic(dot(t,v),dot(b,v),dot(t,l),dot(b,l), NoV, NoL, a)*kSpec;
 
 	float3 baseLayer =	Fd+Fr;
 	if(!clearCoat)

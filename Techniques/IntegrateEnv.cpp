@@ -59,18 +59,16 @@ bool CIntegrateEnvTask::CreateResources(Device device)
 
 }
 #define MIPS 6
-void CIntegrateEnvTask::Execute(Context context, Pass pass)
+void CIntegrateEnvTask::Execute(Context context, Pass pass, int mip)
 {
-	uint sizeX = m_Provider.m_TexSize.x;
-	uint sizeY = m_Provider.m_TexSize.y;
-	for (int i = 0; i < MIPS; i++)
+	uint sizeX = m_Provider.m_TexSize.x >> mip;
+	uint sizeY = m_Provider.m_TexSize.y >> mip;
 	{
-		if (pass != Pass::ConvEnv && i > 0)
-			break;
 
 		ConvConst& params = m_Provider.m_ModelConst.Get();
-		params.mip = i;
-		params.roughness =  i * 0.05;
+		params.size = m_Provider.m_TexSize.x;//equal
+		params.mip = mip >=0 ? mip : 0;
+		params.roughness = mip * 0.15;
 
 		InitPipeline(context);
 		SetRootSignature(context, m_Cache.GetRootSignature());
@@ -84,7 +82,7 @@ void CIntegrateEnvTask::Execute(Context context, Pass pass)
 		m_Cache.GatherParameters({
 									*m_Provider.m_ModelConst.GetPtr(),
 									m_Provider.m_EnvTex,
-									{ (Texture)m_Provider.m_OutTex.m_Resource, {0, i, -1} },
+									{ (Texture)m_Provider.m_OutTex.m_Resource, {0, pass == Pass::ConvEnv?mip:-1, -1} },
 									m_Provider.m_Brdf,
 
 			},
@@ -100,11 +98,10 @@ void CIntegrateEnvTask::Execute(Context context, Pass pass)
 		DestroyResourceTable(GetDevice(context), rt);
 		if (pass == Pass::ConvEnv)
 		{
-			Barrier(context, { { { (Texture)m_Provider.m_OutTex.m_Resource, {0, i, -1} } , EResourceState::RS_UNORDERED_ACCESS } });
+			Barrier(context, { { { (Texture)m_Provider.m_OutTex.m_Resource, {0, mip, -1} } , EResourceState::RS_UNORDERED_ACCESS } });
 
 			Dispatch(context, ( sizeX - 1) / 32 + 1, (sizeY - 1) / 32 + 1, 6);
-			sizeX = sizeX >> 1;
-			sizeY = sizeY >> 1;
+			Barrier(context, { { { (Texture)m_Provider.m_OutTex.m_Resource, {0, mip, -1} } , EResourceState::RS_SHADER_READ } });
 
 		}
 		else
@@ -112,6 +109,9 @@ void CIntegrateEnvTask::Execute(Context context, Pass pass)
 			Barrier(context, { { m_Provider.m_Brdf , EResourceState::RS_UNORDERED_ACCESS } });
 
 			Dispatch(context, (m_Provider.m_TexSize.x - 1) / 32 + 1, (m_Provider.m_TexSize.y - 1) / 32 + 1, 1);
+
+			Barrier(context, { { m_Provider.m_Brdf , EResourceState::RS_SHADER_READ } });
+
 
 		}
 	}

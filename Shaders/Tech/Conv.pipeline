@@ -17,6 +17,7 @@
 struct ConvConst
 {
 	float roughness;
+	int size;
 	int mip;
 };
 [Permutations]
@@ -181,7 +182,7 @@ float2 IntegrateBRDF(float NdotV, float roughness)
 void main(uint3 DTid : SV_DispatchThreadID) 
 {
 
-	uint2 res = uint2(1024 >> ConvParams.mip ,1024 >> ConvParams.mip);
+	uint2 res = uint2(ConvParams.size >> ConvParams.mip ,ConvParams.size >> ConvParams.mip);
 	uint x = DTid.x;
 	uint y = DTid.y;
 #ifdef CONVOLUTE_ENV_MAP
@@ -201,18 +202,19 @@ void main(uint3 DTid : SV_DispatchThreadID)
 	 {  
 	   direction[0] *= -1.0f;  
 	   direction[2] *= -1.0f;  
+	   
 	 }break;  
 	 case Face_Left:  
 	 {  
 	   float const temp = direction[0];  
-	   direction[0] = direction[2];  
-	   direction[2] = -temp;  
+	   direction[0] = -direction[2];  
+	   direction[2] = temp;  
 	 } break;  
 	 case Face_Right:  
 	 {  
 	   float const temp = direction[0];  
-	   direction[0] = -direction[2];  
-	   direction[2] = temp;  
+	   direction[0] = direction[2];  
+	   direction[2] = -temp;  
 	 } break;  
 	 case Face_Top:  
 	 {  
@@ -233,8 +235,8 @@ void main(uint3 DTid : SV_DispatchThreadID)
 	float3 color = IntegrateEnvMap(direction, ConvParams.roughness);
 	OutTex[uint3(x,y,face)] = float4(color, 1.0);
 #else
-	float NoV = 1.0* (x+0.5) / res.x;
-	float rougness = 1 - (1.0* (y+0.5)/ res.y);
+	float NoV = 1.0* (x+0.5) / ConvParams.size;
+	float rougness = 1 - (1.0* (y+0.5)/ ConvParams.size);
 	BRDFTex[uint2(x,y)] = float4(IntegrateBRDF(NoV, rougness).xy,0,1); 	
 #endif
   

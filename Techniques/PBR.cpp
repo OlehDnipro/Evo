@@ -145,7 +145,7 @@ void CSphereGeometry::Draw(Context context, CShaderCache& cache, int resources_s
 			mtx.rows[2].z = 0.1;
 			mtx = mul(translate(float3(3 + 0.25 * i, 0, 2.5 - 0.25 * j)), mtx);
 			m_Provider.Get().model = mtx;
-			m_Provider.Get().material = float4(0. + 0.2 * i, 0 + 0.2 * j, 0.75, 0);
+			m_Provider.Get().material = float4(0. + 0.15 * i, 0 + 0.1 * j, 0.75, 0);
 			m_Provider.Get().baseColor = float3(0.2, 0, 1);
 			{
 				IParameterProvider* prov[] = { &m_Provider };
@@ -202,6 +202,7 @@ void CSphereGeometry::Create(Device device)
 	m_Provider.Get().model = mtx;
 	m_Provider.Get().material = float4(0.1, 0.25, 0.75, 0);
 	m_Provider.Get().baseColor = float3(1, 0, 0);
+
 }
 
 CSphereGeometry::~CSphereGeometry()
@@ -213,7 +214,13 @@ CSphereGeometry::~CSphereGeometry()
 bool CPBRTask::CreateResources(Device device)
 {
     m_Device = device;
-    return  m_Cache.CreateRootSignature(m_Device, NPBR::RootSig, &GetResourceAttrsPBR);
+	if (!m_Cache.CreateRootSignature(m_Device, NPBR::RootSig, &GetResourceAttrsPBR))
+		return false;
+
+	const SSamplerDesc samplers[] = { { FILTER_TRILINEAR, 1, AM_WRAP, AM_WRAP, AM_WRAP, ALWAYS } };
+	if ((m_SamplerTable = CreateSamplerTable(m_Device, m_Cache.GetRootSignature(), NPBR::Samplers, samplers)) == nullptr)
+		return false;
+
 }
 
 void CPBRTask::Draw(Context context)
@@ -223,8 +230,10 @@ void CPBRTask::Draw(Context context)
 	SetPipeline(context, m_Pipeline);
 	IParameterProvider* prov[] = { &m_ViewportProvider };
 	m_Cache.GatherParameters(context, &prov[0], 1);
-	
-	m_Collection->Draw(context, m_Cache, 0);
+	m_Cache.GatherParameters({ {m_Env}, {m_Brdf} , {m_SH} }, NPBR::Resources);
+	SetGraphicsSamplerTable(context, NPBR::Samplers, m_SamplerTable);
+
+	m_Collection->Draw(context, m_Cache, NPBR::Resources);
 }
 
 void CPBRTask::InitPipeline(Context context)
