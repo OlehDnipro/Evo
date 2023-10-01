@@ -63,8 +63,8 @@ float V_GGX(float NoL, float NoV, float roughness)
 float D_GGX_Anisotropic(const float3 n, const float3 h,
         const float3 t, const float3 b, const float roughness) {
 	float anisotropy = 0.75;
-	float at = max(roughness * (1.0 + anisotropy), 0.001);
-	float ab = max(roughness * (1.0 - anisotropy), 0.001);
+	float at = max(roughness * (1.0 + anisotropy), 0.05);
+	float ab = max(roughness * (1.0 - anisotropy), 0.05);
 	float NoH = dot(n, h);
 
     float ToH = dot(t, h);
@@ -78,8 +78,8 @@ float D_GGX_Anisotropic(const float3 n, const float3 h,
 float V_SmithGGXCorrelated_Anisotropic(float ToV, float BoV,
         float ToL, float BoL, float NoV, float NoL, float roughness) {
 	float anisotropy = 0.75;
-	float at = max(roughness * (1.0 + anisotropy), 0.001);
-	float ab = max(roughness * (1.0 - anisotropy), 0.001);
+	float at = max(roughness * (1.0 + anisotropy), 0.05);
+	float ab = max(roughness * (1.0 - anisotropy), 0.05);
 
     float lambdaV = NoL * length(float3(at * ToV, ab * BoV, NoV));
     float lambdaL = NoV * length(float3(at * ToL, ab * BoL, NoL));
@@ -137,9 +137,9 @@ float3 BRDF(float3 baseColor, float3 v, float3 l, float3 n, out float3 kDiffuse,
 	kSpec = FresnelSchlick(VoH, fresnelColor);
 	float3 Fr;
 	if(!aniso)
-		Fr = D_GGX(n,h,a)*V_GGX(NoL,NoV,a)*kSpec;//isotropic
+		Fr =  min(1,max(0, D_GGX(n,h,a)*V_GGX(NoL,NoV,a)))*kSpec;//isotropic
 	else
-		Fr = D_GGX_Anisotropic(n, h, t, b, a)*V_SmithGGXCorrelated_Anisotropic(dot(t,v),dot(b,v),dot(t,l),dot(b,l), NoV, NoL, a)*kSpec;
+		Fr = min(1,max(0, D_GGX_Anisotropic(n, h, t, b, a))*V_SmithGGXCorrelated_Anisotropic(dot(t,v),dot(b,v),dot(t,l),dot(b,l), NoV, NoL, a))*kSpec;
 
 	float3 baseLayer =	Fd+Fr;
 	if(!clearCoat)
