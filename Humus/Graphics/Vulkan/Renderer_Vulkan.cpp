@@ -46,8 +46,8 @@
 #include <assert.h>
 #include <stdio.h>
 //#ifdef DEBUG
-#define USE_DEBUG_MARKERS
-#define USE_DEBUG_UTILS
+//#define USE_DEBUG_MARKERS
+//#define USE_DEBUG_UTILS
 //#endif
 #define VALIDATION_LAYER_NAME "VK_LAYER_LUNARG_standard_validation"
 

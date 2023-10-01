@@ -161,7 +161,8 @@ void main(PixelIn pix, out float4 outFragColor: SV_TARGET)
 		usedNormal = waveNormal;
 	}
 	float k = dot(-lightDir,usedNormal); 
-	float3 color = BRDF(outFragColor.rgb,  -viewVec, -lightDir,usedNormal,ModelConstPBR.material.x,ModelConstPBR.material.y,ModelConstPBR.material.z, false, false)*k;
+	float kDiffuse, kSpec;
+	float3 color = BRDF(outFragColor.rgb,  -viewVec, -lightDir,usedNormal,kDiffuse,kSpec, ModelConstPBR.material.x,ModelConstPBR.material.y,ModelConstPBR.material.z, false, false)*k;
 //	color += float3(0,0.01,0.03);
 	color  = color  / (color  + 1);
     color = pow(color, 1.0/2.2);  
